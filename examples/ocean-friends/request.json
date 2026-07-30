@@ -1,0 +1,10 @@
+{
+  "title": "Ocean Friends",
+  "theme": "ocean creatures",
+  "ageBand": "6-8",
+  "language": "en",
+  "creatureCount": 5,
+  "brief": "A cheerful introduction to ocean life.",
+  "allowMythical": false,
+  "outputFormats": ["docx", "pptx", "pdf"]
+}

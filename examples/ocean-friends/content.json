@@ -1,0 +1,113 @@
+{
+  "schemaVersion": "1.0",
+  "title": "Ocean Friends",
+  "language": "en",
+  "creatures": [
+    {
+      "creatureId": "octopus",
+      "displayName": "Octopus",
+      "poem": {
+        "text": "Eight gentle arms in the shimmering sea,\nWaving a watery hello to me.",
+        "language": "en",
+        "reviewStatus": "needs_review"
+      },
+      "funFact": {
+        "text": "An octopus has three hearts.",
+        "language": "en",
+        "reviewStatus": "needs_review"
+      },
+      "activity": {
+        "text": "Draw an octopus and count all eight arms.",
+        "language": "en",
+        "reviewStatus": "needs_review"
+      },
+      "illustrationBrief": "A friendly octopus waving among colorful coral.",
+      "altText": "A smiling octopus with eight visible arms near a coral reef."
+    },
+    {
+      "creatureId": "green-sea-turtle",
+      "displayName": "Green Sea Turtle",
+      "poem": {
+        "text": "Flippers glide where sea grasses sway,\nA turtle cruises through the day.",
+        "language": "en",
+        "reviewStatus": "needs_review"
+      },
+      "funFact": {
+        "text": "Green sea turtles are named for the greenish color of fat beneath their shells.",
+        "language": "en",
+        "reviewStatus": "needs_review"
+      },
+      "activity": {
+        "text": "Trace a large oval shell and fill it with repeating patterns.",
+        "language": "en",
+        "reviewStatus": "needs_review"
+      },
+      "illustrationBrief": "A green sea turtle swimming over seagrass.",
+      "altText": "A green sea turtle gliding above a meadow of seagrass."
+    },
+    {
+      "creatureId": "clownfish",
+      "displayName": "Clownfish",
+      "poem": {
+        "text": "Orange and white in an anemone bright,\nA clownfish darts left, then slips out of sight.",
+        "language": "en",
+        "reviewStatus": "needs_review"
+      },
+      "funFact": {
+        "text": "Clownfish live among the tentacles of sea anemones.",
+        "language": "en",
+        "reviewStatus": "needs_review"
+      },
+      "activity": {
+        "text": "Color a clownfish using an orange, white, and black pattern.",
+        "language": "en",
+        "reviewStatus": "needs_review"
+      },
+      "illustrationBrief": "A clownfish peeking from a sea anemone.",
+      "altText": "An orange-and-white clownfish among an anemone's tentacles."
+    },
+    {
+      "creatureId": "bottlenose-dolphin",
+      "displayName": "Bottlenose Dolphin",
+      "poem": {
+        "text": "Up through the sparkle, over the foam,\nA dolphin whistles on its way home.",
+        "language": "en",
+        "reviewStatus": "needs_review"
+      },
+      "funFact": {
+        "text": "Dolphins breathe air through a blowhole on top of the head.",
+        "language": "en",
+        "reviewStatus": "needs_review"
+      },
+      "activity": {
+        "text": "Draw a curved wave and add a dolphin leaping above it.",
+        "language": "en",
+        "reviewStatus": "needs_review"
+      },
+      "illustrationBrief": "A bottlenose dolphin leaping above a gentle wave.",
+      "altText": "A gray bottlenose dolphin jumping over a blue wave."
+    },
+    {
+      "creatureId": "seahorse",
+      "displayName": "Seahorse",
+      "poem": {
+        "text": "A curly tail holds on so tight,\nWhile a seahorse bobs in morning light.",
+        "language": "en",
+        "reviewStatus": "needs_review"
+      },
+      "funFact": {
+        "text": "Male seahorses carry developing young in a pouch.",
+        "language": "en",
+        "reviewStatus": "needs_review"
+      },
+      "activity": {
+        "text": "Use a spiral line to draw a seahorse's curled tail.",
+        "language": "en",
+        "reviewStatus": "needs_review"
+      },
+      "illustrationBrief": "A golden seahorse holding seagrass with its curled tail.",
+      "altText": "A small golden seahorse wrapped around a strand of seagrass."
+    }
+  ],
+  "closingNote": "Keep wondering about the amazing creatures in our oceans!"
+}

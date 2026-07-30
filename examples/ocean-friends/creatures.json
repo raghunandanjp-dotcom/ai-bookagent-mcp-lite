@@ -1,0 +1,47 @@
+[
+  {
+    "id": "octopus",
+    "name": "Octopus",
+    "aliases": [],
+    "status": "living",
+    "groups": ["mollusc"],
+    "habitats": ["ocean"],
+    "pinned": false
+  },
+  {
+    "id": "green-sea-turtle",
+    "name": "Green Sea Turtle",
+    "aliases": ["green turtle"],
+    "status": "living",
+    "groups": ["reptile"],
+    "habitats": ["ocean"],
+    "pinned": false
+  },
+  {
+    "id": "clownfish",
+    "name": "Clownfish",
+    "aliases": [],
+    "status": "living",
+    "groups": ["fish"],
+    "habitats": ["coral reef"],
+    "pinned": false
+  },
+  {
+    "id": "bottlenose-dolphin",
+    "name": "Bottlenose Dolphin",
+    "aliases": [],
+    "status": "living",
+    "groups": ["mammal"],
+    "habitats": ["ocean"],
+    "pinned": false
+  },
+  {
+    "id": "seahorse",
+    "name": "Seahorse",
+    "aliases": [],
+    "status": "living",
+    "groups": ["fish"],
+    "habitats": ["ocean", "seagrass"],
+    "pinned": false
+  }
+]
