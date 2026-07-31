@@ -15,6 +15,7 @@ export const PROJECT_SCHEMA_VERSION = "1.0";
 export type ProjectStage =
   | "draft"
   | "selection_review"
+  | "selection_approved"
   | "content_review_required"
   | "language_review_required"
   | "documents_ready"
@@ -95,14 +96,14 @@ export function parseProject(input: unknown): BookProject {
   };
 }
 
-export async function saveProject(projectDir: string, project: BookProject): Promise<string> {
+export async function saveProject(projectDir: string, project: BookProject): Promise<BookProject> {
   await mkdir(projectDir, { recursive: true });
   const updated: BookProject = { ...project, updatedAt: now() };
   const destination = path.join(projectDir, "book-project.json");
   const temporary = path.join(projectDir, `.book-project-${randomUUID()}.tmp`);
   await writeFile(temporary, `${JSON.stringify(updated, null, 2)}\n`, { encoding: "utf8", flag: "wx" });
   await rename(temporary, destination);
-  return destination;
+  return updated;
 }
 
 export async function loadProject(projectDir: string): Promise<BookProject> {
