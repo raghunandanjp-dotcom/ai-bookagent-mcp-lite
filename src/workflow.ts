@@ -168,6 +168,13 @@ export async function acceptCanvaResult(projectDir: string, result: unknown): Pr
 }
 
 export function deliverySummary(project: BookProject) {
+  const validation = project.content
+    ? validateBookContent(project.content, project.selection.current)
+    : undefined;
+  const contentReviewIssues = validation?.report.issues
+    .filter((issue) => issue.level === "warning")
+    .map(({ code, path, message }) => ({ code, path, message })) ?? [];
+
   return {
     projectId: project.projectId,
     revision: project.revision,
@@ -178,6 +185,18 @@ export function deliverySummary(project: BookProject) {
     pageCount: project.content ? 1 + project.content.creatures.length * 3 : 0,
     language: project.request.language,
     languageReviewRequired: project.request.language === "kn",
+    review: {
+      language: {
+        status: project.request.language === "kn" ? "required" : "not_required"
+      },
+      content: {
+        status: !project.content
+          ? "not_available"
+          : contentReviewIssues.length > 0 ? "required" : "complete",
+        outstandingCount: contentReviewIssues.length,
+        issues: contentReviewIssues
+      }
+    },
     exports: project.exports,
     canva: project.canva
   };

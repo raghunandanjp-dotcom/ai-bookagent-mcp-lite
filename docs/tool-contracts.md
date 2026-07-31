@@ -42,4 +42,15 @@ Records a real design ID and validates that the edit URL belongs to Canva.
 
 ## `get_delivery_summary`
 
-Returns creatures covered, page count, language-review status, local artifacts, and Canva state.
+Returns creatures covered, page count, review status, local artifacts, and Canva state.
+
+Review state is independent from workflow stage:
+
+- `review.language.status` is `required` for experimental Kannada output and
+  `not_required` for English output.
+- `review.content.status` is `not_available` before content generation,
+  `required` while validation warnings remain, and `complete` otherwise.
+- `review.content.outstandingCount` and `review.content.issues` expose
+  unresolved factual/content warnings.
+
+The legacy `languageReviewRequired` boolean remains available for compatibility.
