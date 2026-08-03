@@ -9,10 +9,12 @@ describe("PPTX density validation", () => {
   for (const ageBand of Object.keys(PPTX_AGE_PROFILES) as BookRequest["ageBand"][]) {
     it(`accepts bounded ${ageBand} content and rejects overflow`, () => {
       const { content, approved } = pptxFixture(1);
-      const limit = PPTX_AGE_PROFILES[ageBand].sections.poem.words;
-      content.creatures[0]!.poem.text = Array.from({ length: limit }, () => "word").join(" ");
-      expect(validateBookContent(content, approved, context(ageBand)).report.valid).toBe(true);
-      content.creatures[0]!.poem.text += " word";
+      content.selectedAgeBand = ageBand;
+      content.effectiveAgeBand = ageBand;
+      const limit = PPTX_AGE_PROFILES[ageBand].sections.funFact.words;
+      content.creatures[0]!.funFact.text = Array.from({ length: limit }, () => "word").join(" ");
+      expect(validateBookContent(content, approved, context(ageBand)).report.issues.some((issue) => issue.code === "section_word_overflow" && issue.path.endsWith("funFact.text"))).toBe(false);
+      content.creatures[0]!.funFact.text += " word";
       const report = validateBookContent(content, approved, context(ageBand)).report;
       expect(report.valid).toBe(false);
       expect(report.issues.some((issue) => issue.code === "section_word_overflow")).toBe(true);

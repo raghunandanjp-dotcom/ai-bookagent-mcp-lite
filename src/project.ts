@@ -51,6 +51,7 @@ export interface BookProject {
   stage: ProjectStage;
   request: BookRequest;
   selection: SelectionState;
+  contentGeneration: { iterationsUsed: number; currentAttempt: 0 | 1 | 2 };
   content?: BookContent;
   exports: ExportRecord[];
   canva: CanvaState;
@@ -78,6 +79,7 @@ export function createProject(input: unknown): BookProject {
       history: [],
       cumulativeExclusions: []
     },
+    contentGeneration: { iterationsUsed: 0, currentAttempt: 0 },
     exports: [],
     canva: { status: "not_checked" }
   };

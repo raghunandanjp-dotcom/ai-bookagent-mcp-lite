@@ -11,6 +11,7 @@ import {
   generateDocuments,
   getCanvaHandoff,
   initializeProject,
+  reiterateAuthoringPrompt,
   setCanvaCapability,
   updateCreatureSelection
 } from "../src/workflow.ts";
@@ -44,13 +45,16 @@ const section = (text: string) => ({
 });
 
 const content = {
-  schemaVersion: "1.0" as const,
+  schemaVersion: "1.1" as const,
   title: "Ocean Friends",
   language: "en" as const,
+  selectedAgeBand: "6-8" as const,
+  effectiveAgeBand: "6-8" as const,
+  generationAttempt: 0,
   creatures: [{
     creatureId: "octopus",
     displayName: "Octopus",
-    poem: section("Eight arms wave beneath the sea."),
+    poem: { ...section("Eight arms wave beneath the sea\nDancing wild and swimming free\nHiding where the corals grow\n\nWaving to the fish below\nGliding through the water blue\nOctopus now waves to you"), title: "Waving Arms", structureVersion: "1.0" as const, rhymeScheme: "AAB" as const },
     funFact: section("An octopus has three hearts."),
     activity: section("Draw and count eight octopus arms."),
     illustrationBrief: "A friendly octopus near coral.",
@@ -154,5 +158,18 @@ describe("persisted workflow bookkeeping", () => {
       canva: { status: "complete" }
     });
     expect((await loadProject(projectDir)).revision).toBe(8);
+  });
+
+  it("iterates once at the selected age and then at the next age", async () => {
+    await initializeProject(projectDir, { title: "Ocean Friends", theme: "ocean", ageBand: "6-8", creatureCount: 1 });
+    await updateCreatureSelection(projectDir, [creature]);
+    await approveCreatureSelection(projectDir);
+
+    const first = await reiterateAuthoringPrompt(projectDir);
+    expect(first.expectedOutput).toContain('effectiveAgeBand "6-8"');
+    const second = await reiterateAuthoringPrompt(projectDir);
+    expect(second.expectedOutput).toContain('effectiveAgeBand "9-11"');
+    await expect(reiterateAuthoringPrompt(projectDir)).rejects.toThrow(/two poem iterations/i);
+    expect((await loadProject(projectDir)).selection.regenerationsUsed).toBe(0);
   });
 });

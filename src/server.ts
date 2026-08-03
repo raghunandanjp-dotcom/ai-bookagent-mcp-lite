@@ -14,6 +14,7 @@ import {
   getCanvaHandoff,
   initializeProject,
   replaceCreatureContent,
+  reiterateAuthoringPrompt,
   setCanvaCapability,
   updateCreatureSelection
 } from "./workflow.ts";
@@ -38,6 +39,15 @@ server.registerTool(
     }
   },
   async ({ projectDir, request }) => text(await initializeProject(projectDir, request))
+);
+
+server.registerTool(
+  "reiterate_authoring_prompt",
+  {
+    description: "Prepare the next poem iteration automatically: first at the selected age, then at the next age band (12-14 remains 12-14).",
+    inputSchema: { projectDir: z.string().min(1) }
+  },
+  async ({ projectDir }) => text(await reiterateAuthoringPrompt(projectDir))
 );
 
 server.registerTool(

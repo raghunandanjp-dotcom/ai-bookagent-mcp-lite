@@ -16,13 +16,33 @@ Locks a non-empty reviewed selection.
 
 Produces host-assisted prompt batches. More than ten creatures are split into groups of five.
 
+## `reiterate_authoring_prompt`
+
+Produces at most two further prompt packages without another user choice. Iteration one uses the selected age; iteration two uses the next age band, capped at 12–14. This counter is independent from creature-list regeneration.
+
 ## `validate_book_content`
 
-Validates schema, approved-creature coverage, duplicates, unexpected creatures, requested and section language, age-band PPTX word/character/line limits, projected pages, total words, placeholder bounds, and review flags. Presentation overflow is blocking rather than silently shrunk or paginated.
+Validates schema, approved-creature coverage, duplicates, unexpected creatures, poem title/age/stanza/line/rhyme declarations, adjacent stanza repetition, requested and section language, age-band DOCX and PPTX overflow limits, projected pages, total words, and review flags. Presentation overflow is blocking rather than silently shrunk or paginated.
 
 ## `create_document_exports`
 
-Always creates DOCX. It may also create PPTX and PDF. All file locations remain inside the book-project directory. Kannada PPTX records a warning because `Noto Sans Kannada` is referenced but not embedded.
+DOCX is always generated first and is mandatory even when callers request only optional formats. A blocking content-validation error prevents document generation.
+
+The DOCX logical page count is:
+
+```text
+1 cover + (3 × approved creatures) + 1 when closingNote is non-empty
+```
+
+The three creature pages are always poem, fun fact, and activity in that order. Each begins at an explicit page boundary, includes a deterministic illustration placeholder with both the illustration brief and accessible description, and uses typography selected from `effectiveAgeBand`. DOCX-specific overflow-risk errors are blocking; content is never truncated or silently shrunk.
+
+DOCX fun-fact and activity budgets are 70 words for ages 3–5, 100 for 6–8, 140 for 9–11, and 180 for 12–14. Illustration briefs are limited to 60 words, accessible descriptions to 40 words, and closing notes to 120 words. These conservative preflight limits control overflow risk across compatible local renderers; a reference render remains the release gate when LibreOffice is available.
+
+DOCX generation uses only local libraries. LibreOffice and Poppler are optional reference-rendering dependencies and are not required to create an editable DOCX.
+
+Always creates DOCX. It may also create PPTX and PDF. All file locations remain inside the book-project directory.
+
+PPTX uses a deterministic cover plus poem, fun-fact, and activity slide per creature. It preserves editable text and placeholders. Kannada PPTX records a warning because `Noto Sans Kannada` is referenced but not embedded.
 
 ## `check_canva_readiness`
 

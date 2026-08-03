@@ -19,13 +19,16 @@ function available(command) {
 
 function fixture(count) {
   return {
-    schemaVersion: "1.0",
+    schemaVersion: "1.1",
     title: `Wonderful Creatures — ${count}`,
     language: "en",
+    selectedAgeBand: "6-8",
+    effectiveAgeBand: "6-8",
+    generationAttempt: 0,
     creatures: Array.from({ length: count }, (_, index) => ({
       creatureId: `creature-${index + 1}`,
       displayName: `Creature ${index + 1}`,
-      poem: { text: `Creature ${index + 1} dances gently in the light.`, language: "en", reviewStatus: "human_reviewed" },
+      poem: { text: `Creature ${index + 1} dances softly tonight\nUnder stars it feels just right\nThen it rests beside a tree\n\nMorning brings a golden glow\nOff into the world we go\nHappy, curious, wild and free`, language: "en", reviewStatus: "human_reviewed", title: `Creature ${index + 1}'s Song`, structureVersion: "1.0", rhymeScheme: "AAB" },
       funFact: { text: `Creature ${index + 1} has a useful fact to discover.`, language: "en", reviewStatus: "source_supported" },
       activity: { text: `Draw creature ${index + 1} safely in its habitat.`, language: "en", reviewStatus: "human_reviewed" },
       illustrationBrief: `A friendly view of creature ${index + 1} in its habitat.`,
