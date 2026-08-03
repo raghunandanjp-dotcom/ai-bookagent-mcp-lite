@@ -10,7 +10,7 @@ Each approved creature receives:
 2. A factual fun section
 3. A safe activity
 
-The mandatory artifact is DOCX. PPTX and PDF are optional and are generated before the optional Canva phase.
+The primary artifact is always DOCX. After reviewing it, the user may rework it (at most twice), accept it and finish, create optional PPTX/PDF secondary outputs, or continue to Canva. Canva is the final optional output.
 
 ### Boundaries
 
@@ -32,9 +32,11 @@ brief
   -> approve / manually edit / regenerate (at most twice)
   -> host-assisted Claude prompt batches
   -> validate structured content
-  -> DOCX
-  -> optional PPTX/PDF
-  -> Canva readiness check
+  -> primary DOCX
+  -> review: rework (maximum two) or accept
+  -> optional PPTX and/or PDF
+  -> optional Canva readiness check
+  -> select Canva design
   -> user consent
   -> connector handoff
   -> record genuine Canva edit URL
@@ -89,6 +91,8 @@ ai-bookagent approve ./my-book
 ai-bookagent prompt ./my-book
 ai-bookagent content ./my-book ./claude-content.json
 ai-bookagent export ./my-book docx,pptx,pdf
+ai-bookagent accept-docx ./my-book
+ai-bookagent rework ./my-book ./reworked-content.json
 ai-bookagent summary ./my-book
 ```
 
@@ -96,13 +100,14 @@ Generated files and resumable state stay inside the selected book-project direct
 
 ## Canva checkpoint
 
-Local documents are delivered first. The Canva tools then:
+The current DOCX must be explicitly accepted before any secondary output. A rework creates a new source revision, makes prior outputs stale, regenerates DOCX, and clears acceptance. After acceptance, PPTX and PDF may be created independently. Canva then:
 
 1. Record whether the host exposes an authorized Canva connector.
 2. Return installation/authorization guidance when unavailable.
-3. Pause for explicit consent.
-4. Produce a connector-ready handoff.
-5. Validate the returned Canva URL against the `canva.com` domain.
+3. Record the user's chosen Canva design.
+4. Pause for consent scoped to that design and source revision.
+5. Produce a connector-ready handoff.
+6. Validate the returned Canva URL against the `canva.com` domain.
 
 The project never invents an edit link.
 

@@ -5,6 +5,7 @@ import { z } from "zod";
 import { bookRequestSchema, creatureSchema } from "./domain.ts";
 import {
   acceptBookContent,
+  acceptPrimaryOutput,
   acceptCanvaResult,
   approveCreatureSelection,
   consentToCanva,
@@ -13,7 +14,9 @@ import {
   generateDocuments,
   getCanvaHandoff,
   initializeProject,
+  reworkPrimaryOutput,
   replaceCreatureContent,
+  selectCanvaDesign,
   setCanvaCapability,
   updateCreatureSelection
 } from "./workflow.ts";
@@ -87,13 +90,31 @@ server.registerTool(
 server.registerTool(
   "create_document_exports",
   {
-    description: "Create mandatory DOCX and selected optional PPTX/PDF files before Canva.",
+    description: "Create the primary DOCX by default, or accepted-current-revision PPTX/PDF secondary outputs.",
     inputSchema: {
       projectDir: z.string().min(1),
       formats: z.array(z.enum(["docx", "pptx", "pdf"])).optional()
     }
   },
   async ({ projectDir, formats }) => text(await generateDocuments(projectDir, formats))
+);
+
+server.registerTool(
+  "accept_primary_output",
+  {
+    description: "Accept the reviewed DOCX for the current source revision and unlock secondary outputs.",
+    inputSchema: { projectDir: z.string().min(1), note: z.string().optional() }
+  },
+  async ({ projectDir, note }) => text(await acceptPrimaryOutput(projectDir, note))
+);
+
+server.registerTool(
+  "rework_primary_output",
+  {
+    description: "Replace validated book content and regenerate DOCX. At most two primary-output reworks are allowed.",
+    inputSchema: { projectDir: z.string().min(1), content: z.unknown() }
+  },
+  async ({ projectDir, content }) => text(await reworkPrimaryOutput(projectDir, content))
 );
 
 server.registerTool(
@@ -132,6 +153,21 @@ server.registerTool(
     }
   },
   async ({ projectDir, consent }) => text(await consentToCanva(projectDir, consent))
+);
+
+server.registerTool(
+  "select_canva_design",
+  {
+    description: "Record the user's Canva design selection before requesting mutation-specific consent.",
+    inputSchema: {
+      projectDir: z.string().min(1),
+      designId: z.string().min(1),
+      title: z.string().min(1),
+      templateUrl: z.string().url().optional()
+    }
+  },
+  async ({ projectDir, designId, title, templateUrl }) =>
+    text(await selectCanvaDesign(projectDir, { designId, title, templateUrl }))
 );
 
 server.registerTool(

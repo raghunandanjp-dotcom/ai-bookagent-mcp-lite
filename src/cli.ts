@@ -3,11 +3,13 @@ import { readFile } from "node:fs/promises";
 import path from "node:path";
 import {
   acceptBookContent,
+  acceptPrimaryOutput,
   approveCreatureSelection,
   createPromptPackage,
   deliverySummary,
   generateDocuments,
   initializeProject,
+  reworkPrimaryOutput,
   updateCreatureSelection
 } from "./workflow.ts";
 import { loadProject } from "./project.ts";
@@ -20,6 +22,8 @@ function usage(): never {
   ai-bookagent prompt <project-dir>
   ai-bookagent content <project-dir> <content.json>
   ai-bookagent export <project-dir> [docx,pptx,pdf]
+  ai-bookagent accept-docx <project-dir>
+  ai-bookagent rework <project-dir> <content.json>
   ai-bookagent summary <project-dir>`);
   process.exit(2);
 }
@@ -38,6 +42,8 @@ else if (command === "approve") result = await approveCreatureSelection(projectD
 else if (command === "prompt") result = await createPromptPackage(projectDir);
 else if (command === "content" && argument) result = await acceptBookContent(projectDir, await jsonFile(argument));
 else if (command === "export") result = await generateDocuments(projectDir, argument?.split(",") as Array<"docx" | "pptx" | "pdf"> | undefined);
+else if (command === "accept-docx") result = await acceptPrimaryOutput(projectDir);
+else if (command === "rework" && argument) result = await reworkPrimaryOutput(projectDir, await jsonFile(argument));
 else if (command === "summary") result = deliverySummary(await loadProject(projectDir));
 else usage();
 
