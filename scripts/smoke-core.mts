@@ -20,7 +20,7 @@ assert.equal(prompts.batches.length, 1);
 assert.match(prompts.batches[0].prompt, /data-only/);
 assert.equal(validation.report.valid, true);
 assert.equal(validation.report.creaturesCovered.length, 5);
-assert.equal(validation.report.pageCount, 16);
+assert.equal(validation.report.pageCount, 17);
 
 const second = beginSelection([{ ...creatures[0], id: "seal", name: "Seal", aliases: [] }], selection);
 const third = beginSelection([{ ...creatures[0], id: "walrus", name: "Walrus", aliases: [] }], second);
