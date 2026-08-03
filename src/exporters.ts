@@ -15,6 +15,7 @@ import {
 import { createRequire } from "node:module";
 import type { BookContent } from "./domain.ts";
 import { fileDigest, safeOutputName, type ExportRecord } from "./project.ts";
+import { normalizePoemText } from "./poems.ts";
 
 const require = createRequire(import.meta.url);
 const PptxGenJS = require("pptxgenjs") as typeof import("pptxgenjs").default;
@@ -68,9 +69,10 @@ function docxChildren(content: BookContent): Paragraph[] {
         spacing: { before: 240, after: 100 },
         children: [new TextRun({ text: sectionTitle(key), bold: true, color: key === "funFact" ? COLORS.coral : COLORS.teal, font })]
       }));
+      if (key === "poem") children.push(new Paragraph({ keepNext: true, children: [new TextRun({ text: creature.poem.title, bold: true, size: 30, color: COLORS.ink, font })] }));
       children.push(new Paragraph({
         spacing: { after: 200, line: 340 },
-        children: [new TextRun({ text: creature[key].text, size: 28, color: COLORS.ink, font })]
+        children: [new TextRun({ text: key === "poem" ? normalizePoemText(creature.poem.text) : creature[key].text, size: 28, color: COLORS.ink, font })]
       }));
     }
     children.push(new Paragraph({
@@ -145,7 +147,8 @@ export async function exportPptx(content: BookContent, exportDir: string): Promi
       slide.background = { color: COLORS.cream };
       slide.addText(creature.displayName, { x: 0.7, y: 0.45, w: 11.9, h: 0.55, fontSize: 28, bold: true, color: COLORS.navy, margin: 0.03 });
       slide.addText(sectionTitle(key), { x: 0.72, y: 1.15, w: 3.0, h: 0.4, fontSize: 18, bold: true, color: key === "funFact" ? COLORS.coral : COLORS.teal, margin: 0.02 });
-      slide.addText(creature[key].text, { x: 0.8, y: 1.8, w: 7.3, h: 4.5, fontSize: 20, color: COLORS.ink, breakLine: false, valign: "middle", margin: 0.12, fit: "shrink" });
+      const body = key === "poem" ? `${creature.poem.title}\n\n${normalizePoemText(creature.poem.text)}` : creature[key].text;
+      slide.addText(body, { x: 0.8, y: 1.8, w: 7.3, h: 4.5, fontSize: 20, color: COLORS.ink, breakLine: false, valign: "middle", margin: 0.12, fit: "shrink" });
       slide.addText(creature.altText, { x: 8.55, y: 2.0, w: 3.9, h: 2.8, fontSize: 16, italic: true, color: "5C6770", align: "center", valign: "middle", margin: 0.15, fill: { color: "E9F3F5" }, line: { color: "9BC8D1", width: 1 } });
       slide.addText("Illustration placeholder", { x: 8.8, y: 5.05, w: 3.4, h: 0.35, fontSize: 12, color: "68737D", align: "center", margin: 0.01 });
     }
@@ -183,7 +186,8 @@ export async function exportPdf(content: BookContent, exportDir: string): Promis
       pdf.fillColor(`#${COLORS.navy}`).fontSize(24).text(creature.displayName);
       for (const key of ["poem", "funFact", "activity"] as const) {
         pdf.moveDown(0.8).fillColor(`#${key === "funFact" ? COLORS.coral : COLORS.teal}`).fontSize(16).text(sectionTitle(key));
-        pdf.moveDown(0.25).fillColor(`#${COLORS.ink}`).fontSize(14).text(creature[key].text, { lineGap: 4 });
+        const body = key === "poem" ? `${creature.poem.title}\n\n${normalizePoemText(creature.poem.text)}` : creature[key].text;
+        pdf.moveDown(0.25).fillColor(`#${COLORS.ink}`).fontSize(14).text(body, { lineGap: 4 });
       }
       pdf.moveDown().fillColor("#5C6770").fontSize(11).text(`Illustration idea: ${creature.illustrationBrief}`);
     }

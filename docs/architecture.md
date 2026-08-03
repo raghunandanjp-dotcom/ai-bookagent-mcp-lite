@@ -14,6 +14,7 @@
 - `domain.ts`: canonical schemas and hard limits.
 - `selection.ts`: canonical IDs, alias-aware deduplication, regeneration history, and batching.
 - `prompts.ts`: FullPipelineV3-inspired host prompt packages.
+- `poems.ts`: canonical age defaults, iteration progression, normalization, and structural analysis.
 - `validation.ts`: schema, coverage, page, word, language, and review checks.
 - `project.ts`: atomic manifest persistence, provenance, paths, and checksums.
 - `exporters.ts`: deterministic DOCX, PPTX, and PDF creation.
@@ -33,6 +34,8 @@ OAuth credentials are never handled or stored by this project.
 The manifest stores the project ID, revision, request, creature-selection history, cumulative exclusions, content, export checksums, and Canva status. Reopening a project does not reset its regeneration count.
 
 Full creature-list regeneration is limited to two usable results after the initial selection. Malformed output and targeted duplicate replacement are repairs, not consumed regeneration attempts.
+
+Poem iteration is a separate ledger: iteration one keeps the selected age band and iteration two uses the next band, with 12–14 capped at 12–14. The poem contract is upstream of exporter-specific work in issues #9–#12; those tasks must preserve poem semantics and intentional breaks rather than redefine them.
 
 ## Future extensions
 

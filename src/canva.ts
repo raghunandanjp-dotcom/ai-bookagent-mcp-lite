@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { LIMITS, type BookContent, type BookRequest } from "./domain.ts";
 import type { CanvaState } from "./project.ts";
+import { normalizePoemText } from "./poems.ts";
 
 export const canvaCapabilitySchema = z.object({
   available: z.boolean(),
@@ -49,7 +50,7 @@ export function prepareCanvaHandoff(request: BookRequest, content: BookContent, 
     language: request.language,
     audience: `ages ${request.ageBand}`,
     creaturesCovered: content.creatures.map((creature) => creature.displayName),
-    instruction: "Create an editable children's presentation. Preserve all supplied text, use large readable type, strong contrast, consistent creature illustration treatment, and one poem, fun fact, and activity slide per creature.",
+    instruction: "Create an editable children's presentation. Preserve all supplied text and intentional poem line/stanza breaks, use large readable type, strong contrast, consistent creature illustration treatment, and one poem, fun fact, and activity slide per creature.",
     pages: [
       { type: "cover", title: content.title },
       ...content.creatures.flatMap((creature) =>
@@ -58,7 +59,8 @@ export function prepareCanvaHandoff(request: BookRequest, content: BookContent, 
           creatureId: creature.creatureId,
           creature: creature.displayName,
           title: `${creature.displayName} - ${section === "funFact" ? "Fun Fact" : section[0].toUpperCase() + section.slice(1)}`,
-          body: creature[section].text,
+          body: section === "poem" ? normalizePoemText(creature.poem.text) : creature[section].text,
+          ...(section === "poem" ? { poemTitle: creature.poem.title, rhymeScheme: creature.poem.rhymeScheme } : {}),
           illustrationBrief: creature.illustrationBrief,
           altText: creature.altText
         }))

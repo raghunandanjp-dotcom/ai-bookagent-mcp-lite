@@ -16,9 +16,13 @@ Locks a non-empty reviewed selection.
 
 Produces host-assisted prompt batches. More than ten creatures are split into groups of five.
 
+## `reiterate_authoring_prompt`
+
+Produces at most two further prompt packages without another user choice. Iteration one uses the selected age; iteration two uses the next age band, capped at 12–14. This counter is independent from creature-list regeneration.
+
 ## `validate_book_content`
 
-Validates schema, approved-creature coverage, duplicates, unexpected creatures, language script, section limits, projected pages, total words, and review flags.
+Validates schema, approved-creature coverage, duplicates, unexpected creatures, poem title/age/stanza/line/rhyme declarations, adjacent stanza repetition, language script, section limits, projected pages, total words, and review flags.
 
 ## `create_document_exports`
 

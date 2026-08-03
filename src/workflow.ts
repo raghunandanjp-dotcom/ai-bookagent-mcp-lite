@@ -20,7 +20,7 @@ import { approveSelection, beginSelection } from "./selection.ts";
 import { validateBookContent } from "./validation.ts";
 
 type ProjectMutation = Partial<
-  Pick<BookProject, "stage" | "selection" | "content" | "exports" | "canva">
+  Pick<BookProject, "stage" | "selection" | "contentGeneration" | "content" | "exports" | "canva">
 >;
 
 async function persistMutation(
@@ -68,17 +68,28 @@ export async function approveCreatureSelection(projectDir: string): Promise<Book
 export async function createPromptPackage(projectDir: string) {
   const project = await loadProject(projectDir);
   if (!project.selection.approved) throw new Error("Approve the creature list before preparing content prompts.");
-  const promptPackage = prepareAuthoringPrompts(project.request, project.selection.current);
+  const promptPackage = prepareAuthoringPrompts(project.request, project.selection.current, project.contentGeneration.currentAttempt);
   const promptDir = resolveInside(projectDir, "prompts");
   await mkdir(promptDir, { recursive: true });
   await writeFile(path.join(promptDir, "authoring-prompt-package.json"), `${JSON.stringify(promptPackage, null, 2)}\n`, "utf8");
   return promptPackage;
 }
 
+export async function reiterateAuthoringPrompt(projectDir: string) {
+  const project = await loadProject(projectDir);
+  if (!project.selection.approved) throw new Error("Approve the creature list before reiterating content.");
+  if (project.contentGeneration.iterationsUsed >= 2) throw new Error("Only two poem iterations are permitted.");
+  const attempt = (project.contentGeneration.iterationsUsed + 1) as 1 | 2;
+  const updated = await persistMutation(projectDir, project, {
+    contentGeneration: { iterationsUsed: attempt, currentAttempt: attempt }
+  });
+  return prepareAuthoringPrompts(updated.request, updated.selection.current, attempt);
+}
+
 export async function acceptBookContent(projectDir: string, contentInput: unknown) {
   const project = await loadProject(projectDir);
   if (!project.selection.approved) throw new Error("Approve the creature list before accepting book content.");
-  const result = validateBookContent(contentInput, project.selection.current);
+  const result = validateBookContent(contentInput, project.selection.current, project.request, project.contentGeneration.currentAttempt);
   const stage =
     !result.report.valid ? "content_review_required" :
     project.request.language === "kn" ? "language_review_required" :
@@ -106,7 +117,7 @@ export async function replaceCreatureContent(projectDir: string, creatureInput: 
   const creatures = [...project.content.creatures];
   creatures[existingIndex] = replacement;
   const content = { ...project.content, creatures };
-  const validation = validateBookContent(content, project.selection.current);
+  const validation = validateBookContent(content, project.selection.current, project.request);
   const updated = await persistMutation(projectDir, project, {
     stage: validation.report.valid
       ? project.request.language === "kn" ? "language_review_required" : "content_review_required"
@@ -124,7 +135,7 @@ export async function generateDocuments(
 ): Promise<BookProject> {
   const project = await loadProject(projectDir);
   const content: BookContent = bookContentSchema.parse(project.content);
-  const validation = validateBookContent(content, project.selection.current);
+  const validation = validateBookContent(content, project.selection.current, project.request);
   if (!validation.report.valid) throw new Error("Book content has blocking validation errors.");
   const exportDir = resolveInside(projectDir, "exports");
   const records = await exportSelectedFormats(content, exportDir, formats ?? project.request.outputFormats);
@@ -169,7 +180,7 @@ export async function acceptCanvaResult(projectDir: string, result: unknown): Pr
 
 export function deliverySummary(project: BookProject) {
   const validation = project.content
-    ? validateBookContent(project.content, project.selection.current)
+    ? validateBookContent(project.content, project.selection.current, project.request)
     : undefined;
   const contentReviewIssues = validation?.report.issues
     .filter((issue) => issue.level === "warning")
@@ -184,6 +195,9 @@ export function deliverySummary(project: BookProject) {
     sectionsPerCreature: ["poem", "fun fact", "activity"],
     pageCount: project.content ? 1 + project.content.creatures.length * 3 : 0,
     language: project.request.language,
+    selectedAgeBand: project.request.ageBand,
+    effectiveAgeBand: project.content?.effectiveAgeBand ?? project.request.ageBand,
+    generationAttempt: project.contentGeneration.currentAttempt,
     languageReviewRequired: project.request.language === "kn",
     review: {
       language: {
