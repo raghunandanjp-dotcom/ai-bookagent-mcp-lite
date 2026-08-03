@@ -73,6 +73,13 @@ export function recordCanvaConsent(consent: boolean): CanvaState {
   return { status: "consented", consentedAt: new Date().toISOString() };
 }
 
+function canvaSectionTitle(language: BookRequest["language"], section: "poem" | "funFact" | "activity"): string {
+  if (language === "kn") {
+    return section === "poem" ? "ಕವಿತೆ" : section === "funFact" ? "ಆಸಕ್ತಿದಾಯಕ ಸಂಗತಿ" : "ಚಟುವಟಿಕೆ";
+  }
+  return section === "poem" ? "Poem" : section === "funFact" ? "Fun Fact" : "Activity";
+}
+
 export function prepareCanvaHandoff(projectId: string, revision: number, request: BookRequest, content: BookContent, canva: CanvaState) {
   if (canva.status !== "consented" && !(canva.status === "failed" && canva.failure?.retryable && canva.consentedAt)) {
     throw new Error("Explicit Canva consent is required before preparing the handoff.");
@@ -95,7 +102,30 @@ export function prepareCanvaHandoff(projectId: string, revision: number, request
     language: request.language,
     audience: `ages ${request.ageBand}`,
     creaturesCovered: content.creatures.map((creature) => creature.displayName),
-    instruction: "Create an editable children's presentation. Preserve all supplied text and intentional poem line/stanza breaks, use large readable type, strong contrast, consistent creature illustration treatment, and one poem, fun fact, and activity slide per creature.",
+    locale: request.language === "kn" ? "kn-IN" : "en-US",
+    typography: request.language === "kn" ? {
+      script: "Kannada",
+      preferredFont: "Noto Sans Kannada",
+      requireKannadaGlyphCoverage: true,
+      preserveEditableText: true,
+      fallbackPolicy: "Do not transliterate, replace, or rasterize Kannada text. If a Kannada-capable editable font is unavailable, return a structured non-retryable failure."
+    } : {
+      script: "Latin",
+      preferredFont: "Noto Sans",
+      preserveEditableText: true
+    },
+    review: request.language === "kn" ? {
+      experimental: true,
+      humanLanguageReviewRequired: true,
+      renderedGlyphReviewRequired: true
+    } : {
+      experimental: false,
+      humanLanguageReviewRequired: false,
+      renderedGlyphReviewRequired: false
+    },
+    instruction: request.language === "kn"
+      ? "Create an editable children's presentation in Kannada. Preserve every supplied Kannada character and intentional poem line/stanza break. Use a Kannada-capable editable font, preferably Noto Sans Kannada; never transliterate, replace, or rasterize the text. Use large readable type, strong contrast, consistent creature illustration treatment, and one poem, fun fact, and activity slide per creature. Return a structured failure if Kannada glyph coverage cannot be preserved."
+      : "Create an editable children's presentation. Preserve all supplied text and intentional poem line/stanza breaks, use large readable type, strong contrast, consistent creature illustration treatment, and one poem, fun fact, and activity slide per creature.",
     pages: [
       { type: "cover", title: content.title },
       ...content.creatures.flatMap((creature) =>
@@ -103,7 +133,7 @@ export function prepareCanvaHandoff(projectId: string, revision: number, request
           type: section,
           creatureId: creature.creatureId,
           creature: creature.displayName,
-          title: `${creature.displayName} - ${section === "funFact" ? "Fun Fact" : section[0].toUpperCase() + section.slice(1)}`,
+          title: `${creature.displayName} — ${canvaSectionTitle(request.language, section)}`,
           body: section === "poem" ? normalizePoemText(creature.poem.text) : creature[section].text,
           ...(section === "poem" ? { poemTitle: creature.poem.title, rhymeScheme: creature.poem.rhymeScheme } : {}),
           illustrationBrief: creature.illustrationBrief,

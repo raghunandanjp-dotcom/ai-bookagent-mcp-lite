@@ -82,6 +82,22 @@ export const bookRequestSchema = z.object({
   outputFormats: Array.from(new Set(["docx" as const, ...value.outputFormats]))
 }));
 
+// Interactive creation requires a deliberate age and language choice. The
+// persisted schema above retains defaults for backwards-compatible loading.
+export const interactiveBookRequestSchema = z.object({
+  title: z.string().min(1).max(LIMITS.maxTitleCharacters),
+  theme: z.string().min(1).max(200),
+  ageBand: ageBandSchema.describe("Ask the user to choose one supported age band."),
+  language: languageSchema.describe("Ask the user to choose English or experimental Kannada. Kannada requires fluent human review and discretion."),
+  creatureCount: z.number().int().min(1).max(LIMITS.maxCreatures).default(LIMITS.defaultCreatures),
+  brief: z.string().max(LIMITS.maxBriefCharacters).default(""),
+  allowMythical: z.boolean().default(false),
+  outputFormats: z.array(z.enum(["docx", "pptx", "pdf"])).default(["docx"])
+}).transform((value) => ({
+  ...value,
+  outputFormats: Array.from(new Set(["docx" as const, ...value.outputFormats]))
+}));
+
 export const contentSectionSchema = z.object({
   text: z.string().min(1),
   language: languageSchema,
