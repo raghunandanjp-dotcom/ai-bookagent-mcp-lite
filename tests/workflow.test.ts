@@ -19,13 +19,13 @@ import { loadProject } from "../src/project.ts";
 import { exportSelectedFormats } from "../src/exporters.ts";
 
 vi.mock("../src/exporters.ts", () => ({
-  exportSelectedFormats: vi.fn(async () => [{
+  exportSelectedFormats: vi.fn(async () => ({ records: [{
     format: "docx",
     relativePath: "ocean-friends.docx",
     sha256: "a".repeat(64),
     bytes: 1024,
     createdAt: new Date().toISOString()
-  }])
+  }], failures: [] }))
 }));
 
 const creature = {
@@ -171,5 +171,21 @@ describe("persisted workflow bookkeeping", () => {
     expect(second.expectedOutput).toContain('effectiveAgeBand "9-11"');
     await expect(reiterateAuthoringPrompt(projectDir)).rejects.toThrow(/two poem iterations/i);
     expect((await loadProject(projectDir)).selection.regenerationsUsed).toBe(0);
+  });
+
+  it("persists DOCX and marks the project partially complete when optional PDF fails", async () => {
+    await initializeProject(projectDir, { title: "Ocean Friends", theme: "ocean", creatureCount: 1, outputFormats: ["pdf"] });
+    await updateCreatureSelection(projectDir, [creature]);
+    await approveCreatureSelection(projectDir);
+    await acceptBookContent(projectDir, content);
+    vi.mocked(exportSelectedFormats).mockResolvedValueOnce({
+      records: [{ format: "docx", relativePath: "ocean-friends.docx", sha256: "a".repeat(64), bytes: 1024, createdAt: new Date().toISOString() }],
+      failures: [{ format: "pdf", code: "pdf_font_missing", message: "Font missing." }]
+    });
+    const exported = await generateDocuments(projectDir);
+    expect(exported.stage).toBe("partially_complete");
+    expect(exported.exports.map((record) => record.format)).toEqual(["docx"]);
+    expect(exported.exportFailures).toEqual([{ format: "pdf", code: "pdf_font_missing", message: "Font missing." }]);
+    expect((await loadProject(projectDir)).exportFailures).toEqual(exported.exportFailures);
   });
 });

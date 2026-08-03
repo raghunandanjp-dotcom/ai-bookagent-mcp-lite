@@ -11,3 +11,4 @@ work/
 Thumbs.db
 *.local.json
 .pptx-qa/
+.pdf-qa/

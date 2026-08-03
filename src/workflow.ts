@@ -21,7 +21,7 @@ import { approveSelection, beginSelection } from "./selection.ts";
 import { validateBookContent } from "./validation.ts";
 
 type ProjectMutation = Partial<
-  Pick<BookProject, "stage" | "selection" | "contentGeneration" | "content" | "exports" | "canva">
+  Pick<BookProject, "stage" | "selection" | "contentGeneration" | "content" | "exports" | "exportFailures" | "canva">
 >;
 
 async function persistMutation(
@@ -54,6 +54,7 @@ export async function updateCreatureSelection(
     selection,
     content: undefined,
     exports: [],
+    exportFailures: [],
     canva: { status: "not_checked" }
   });
 }
@@ -99,6 +100,7 @@ export async function acceptBookContent(projectDir: string, contentInput: unknow
     stage,
     content: result.content,
     exports: [],
+    exportFailures: [],
     canva: { status: "not_checked" }
   });
   return { project: updated, report: result.report };
@@ -125,6 +127,7 @@ export async function replaceCreatureContent(projectDir: string, creatureInput: 
       : "content_review_required",
     content,
     exports: [],
+    exportFailures: [],
     canva: { status: "not_checked" }
   });
   return { project: updated, affectedCreatureId: replacement.creatureId, report: validation.report };
@@ -139,10 +142,15 @@ export async function generateDocuments(
   const validation = validateBookContent(content, project.selection.current, project.request);
   if (!validation.report.valid) throw new Error("Book content has blocking validation errors.");
   const exportDir = resolveInside(projectDir, "exports");
-  const records = await exportSelectedFormats(content, exportDir, formats ?? project.request.outputFormats, { ageBand: content.effectiveAgeBand, language: project.request.language });
+  const result = await exportSelectedFormats(content, exportDir, formats ?? project.request.outputFormats, { ageBand: content.effectiveAgeBand, language: project.request.language });
+  if (!result.records.some((record) => record.format === "docx")) {
+    const failure = result.failures.find((item) => item.format === "docx");
+    throw new Error(failure?.message ?? "Mandatory DOCX export failed.");
+  }
   return persistMutation(projectDir, project, {
-    stage: "documents_ready",
-    exports: records
+    stage: result.failures.length > 0 ? "partially_complete" : "documents_ready",
+    exports: result.records,
+    exportFailures: result.failures
   });
 }
 
@@ -213,6 +221,7 @@ export function deliverySummary(project: BookProject) {
       }
     },
     exports: project.exports,
+    exportFailures: project.exportFailures,
     canva: project.canva
   };
 }

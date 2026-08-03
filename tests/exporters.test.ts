@@ -3,8 +3,9 @@ import os from "node:os";
 import path from "node:path";
 import JSZip from "jszip";
 import { afterEach, describe, expect, it } from "vitest";
+import { getDocument } from "pdfjs-dist/legacy/build/pdf.mjs";
 import type { BookContent } from "../src/domain.ts";
-import { exportDocx, exportSelectedFormats } from "../src/exporters.ts";
+import { exportDocx, exportPdf, exportSelectedFormats } from "../src/exporters.ts";
 
 const content: BookContent = {
   schemaVersion: "1.1",
@@ -118,8 +119,8 @@ describe("DOCX exporter", () => {
   it("always includes DOCX when only optional formats are requested", async () => {
     const directory = await mkdtemp(path.join(os.tmpdir(), "bookagent-formats-"));
     temporaryDirectories.push(directory);
-    const records = await exportSelectedFormats(content, directory, []);
-    expect(records.map((record) => record.format)).toEqual(["docx"]);
+    const result = await exportSelectedFormats(content, directory, []);
+    expect(result.records.map((record) => record.format)).toEqual(["docx"]);
   });
 
   it("replaces an existing DOCX export without leaving temporary packages", async () => {
@@ -128,5 +129,48 @@ describe("DOCX exporter", () => {
     await exportDocx(content, directory);
     const second = await exportDocx({ ...content, closingNote: "A revised closing note." }, directory);
     expect(await readdir(directory)).toEqual([second.relativePath]);
+  });
+});
+
+describe("PDF exporter", () => {
+  it("creates one cover and three section pages while excluding the optional closing note", async () => {
+    const directory = await mkdtemp(path.join(os.tmpdir(), "bookagent-pdf-"));
+    temporaryDirectories.push(directory);
+    const record = await exportPdf(content, directory);
+    const raw = await readFile(path.join(directory, record.relativePath));
+    const document = await getDocument({ data: new Uint8Array(raw), useSystemFonts: false }).promise;
+    expect(document.numPages).toBe(4);
+    const text: string[] = [];
+    for (let pageNumber = 1; pageNumber <= document.numPages; pageNumber += 1) {
+      const page = await document.getPage(pageNumber);
+      const pageText = await page.getTextContent();
+      text.push(pageText.items.map((item) => "str" in item ? item.str : "").join(" "));
+    }
+    expect(text[0]).toContain("Ocean Friends");
+    expect(text[1]).toContain("Waving Arms");
+    expect(text[2]).toContain("three hearts");
+    expect(text[3]).toContain("Illustration idea");
+    expect(text.join(" ")).not.toContain(content.closingNote);
+    expect(raw.toString("latin1")).toMatch(/\/FontFile[23]\b/);
+  });
+
+  it("reports a missing Kannada font without losing mandatory DOCX", async () => {
+    const directory = await mkdtemp(path.join(os.tmpdir(), "bookagent-pdf-"));
+    temporaryDirectories.push(directory);
+    delete process.env.BOOK_AGENT_KANNADA_FONT_PATH;
+    const result = await exportSelectedFormats({ ...content, language: "kn" }, directory, ["pdf"]);
+    expect(result.records.map((record) => record.format)).toEqual(["docx"]);
+    expect(result.failures).toMatchObject([{ format: "pdf", code: "pdf_font_missing" }]);
+  });
+
+  it("fails instead of clipping or adding spill pages", async () => {
+    const directory = await mkdtemp(path.join(os.tmpdir(), "bookagent-pdf-"));
+    temporaryDirectories.push(directory);
+    const overflowing: BookContent = {
+      ...content,
+      creatures: [{ ...content.creatures[0]!, funFact: { ...content.creatures[0]!.funFact, text: "A very long fact. ".repeat(800) } }]
+    };
+    await expect(exportPdf(overflowing, directory)).rejects.toMatchObject({ code: "pdf_text_overflow" });
+    await expect(readFile(path.join(directory, "ocean-friends.pdf"))).rejects.toMatchObject({ code: "ENOENT" });
   });
 });

@@ -108,6 +108,8 @@ DOCX generation itself remains local and requires no Office installation, cloud 
 
 PPTX does not embed `Noto Sans Kannada`; Kannada decks therefore include an export warning and require the font on every viewing or editing system.
 
+PDF uses a fixed cover-plus-three-pages-per-creature A4 layout and embeds the bundled free Noto Sans fonts for English. Optional closing notes are not included in the MVP PDF. Overflow or optional PDF failures are reported without invalidating a successful mandatory DOCX. See [MVP PDF generation](docs/pdf-generation.md).
+
 ## CLI
 
 ```bash
