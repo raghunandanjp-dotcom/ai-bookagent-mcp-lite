@@ -146,7 +146,7 @@ describe("persisted workflow bookkeeping", () => {
     await generateDocuments(projectDir, ["docx"]);
     await acceptPrimaryOutput(projectDir);
 
-    const ready = await setCanvaCapability(projectDir, { available: true });
+    const ready = await setCanvaCapability(projectDir, { status: "ready" });
     expect(ready.revision).toBe(7);
 
     const selected = await selectCanvaDesign(projectDir, {
@@ -161,16 +161,33 @@ describe("persisted workflow bookkeeping", () => {
     await getCanvaHandoff(projectDir);
     expect((await loadProject(projectDir)).revision).toBe(9);
 
+    const failed = await acceptCanvaResult(projectDir, {
+      outcome: "failed",
+      code: "timeout",
+      message: "Connector timed out",
+      retryable: true
+    });
+    expect(failed).toMatchObject({
+      revision: 10,
+      stage: "canva_failed",
+      canva: { status: "failed", consentedAt: "2026-07-31T10:00:00.000Z", failure: { retryable: true } }
+    });
+
+    await getCanvaHandoff(projectDir);
+    expect((await loadProject(projectDir)).revision).toBe(10);
+
     const completed = await acceptCanvaResult(projectDir, {
+      outcome: "success",
       designId: "design-1",
-      editUrl: "https://www.canva.com/design/design-1"
+      editUrl: "https://www.canva.com/design/design-1/edit"
     });
     expect(completed).toMatchObject({
-      revision: 10,
+      revision: 11,
       stage: "canva_complete",
       canva: { status: "complete" }
     });
-    expect((await loadProject(projectDir)).revision).toBe(10);
+    expect(completed.canva.failure).toBeUndefined();
+    expect((await loadProject(projectDir)).revision).toBe(11);
   });
 
   it("allows two reworks, warns after each, and rejects a third", async () => {
@@ -203,7 +220,7 @@ describe("persisted workflow bookkeeping", () => {
     await generateDocuments(projectDir, ["docx"]);
 
     await expect(generateDocuments(projectDir, ["pptx"])).rejects.toThrow(/accept the current docx/i);
-    await expect(setCanvaCapability(projectDir, { available: true })).rejects.toThrow(/accept the current docx/i);
+    await expect(setCanvaCapability(projectDir, { status: "ready" })).rejects.toThrow(/accept the current docx/i);
     await acceptPrimaryOutput(projectDir);
     const withPptx = await generateDocuments(projectDir, ["pptx"]);
     expect(withPptx).toMatchObject({ stage: "secondary_outputs_ready", primaryOutput: { status: "accepted" } });

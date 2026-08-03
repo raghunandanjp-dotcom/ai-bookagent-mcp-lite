@@ -287,6 +287,9 @@ export async function selectCanvaDesign(
     stage: "canva_consent_required",
     canva: {
       status: "ready_for_consent",
+      readiness: project.canva.readiness,
+      checkedAt: project.canva.checkedAt,
+      adapter: project.canva.adapter,
       selection: {
         ...design,
         selectedAt: new Date().toISOString(),
@@ -303,8 +306,15 @@ export async function consentToCanva(projectDir: string, consent: boolean): Prom
   if (!project.canva.selection || project.canva.selection.sourceRevision !== project.sourceRevision) {
     throw new Error("Select a Canva design for the current accepted DOCX before recording consent.");
   }
+  const consentState = recordCanvaConsent(consent);
   return persistMutation(projectDir, project, {
-    canva: { ...project.canva, ...recordCanvaConsent(consent) }
+    stage: consent ? "canva_consent_required" : "canva_declined",
+    canva: {
+      ...project.canva,
+      ...consentState,
+      consentedAt: consentState.consentedAt,
+      declinedAt: consentState.declinedAt
+    }
   });
 }
 
@@ -312,15 +322,26 @@ export async function getCanvaHandoff(projectDir: string) {
   const project = await loadProject(projectDir);
   if (!project.content) throw new Error("Validated content is required.");
   requireAcceptedPrimary(project);
-  return prepareCanvaHandoff(project.request, project.content, project.canva);
+  return prepareCanvaHandoff(project.projectId, project.revision, project.request, project.content, project.canva);
 }
 
 export async function acceptCanvaResult(projectDir: string, result: unknown): Promise<BookProject> {
   const project = await loadProject(projectDir);
-  if (project.canva.status !== "consented") throw new Error("Canva consent is required before recording a result.");
+  if (project.canva.status !== "consented" &&
+      !(project.canva.status === "failed" && project.canva.failure?.retryable && project.canva.consentedAt)) {
+    throw new Error("Canva consent is required before recording a result.");
+  }
+  const resultState = recordCanvaResult(result);
   return persistMutation(projectDir, project, {
-    stage: "canva_complete",
-    canva: { ...project.canva, ...recordCanvaResult(result), sourceRevision: project.sourceRevision }
+    stage: resultState.status === "complete" ? "canva_complete" : "canva_failed",
+    canva: {
+      ...project.canva,
+      ...resultState,
+      failure: resultState.status === "complete" ? undefined : resultState.failure,
+      designId: resultState.status === "complete" ? resultState.designId : undefined,
+      editUrl: resultState.status === "complete" ? resultState.editUrl : undefined,
+      sourceRevision: project.sourceRevision
+    }
   });
 }
 
@@ -339,10 +360,14 @@ export function deliverySummary(project: BookProject) {
   } else if (project.primaryOutput.status === "accepted") {
     if (!currentFormats.has("pptx")) nextActions.push("create_pptx");
     if (!currentFormats.has("pdf")) nextActions.push("create_pdf");
-    if (project.canva.status === "not_checked" || project.canva.status === "setup_required") nextActions.push("start_canva");
+    if (["not_checked", "setup_required", "declined"].includes(project.canva.status)) nextActions.push("start_canva");
     if (project.canva.status === "design_selection_required") nextActions.push("select_canva_design");
     if (project.canva.status === "ready_for_consent") nextActions.push("confirm_canva_handoff");
     if (project.canva.status === "consented") nextActions.push("prepare_canva_handoff");
+    if (project.canva.status === "failed") {
+      if (project.canva.failure?.retryable) nextActions.push("prepare_canva_handoff");
+      nextActions.push("start_canva");
+    }
   }
 
   return {
@@ -378,7 +403,8 @@ export function deliverySummary(project: BookProject) {
     exportFailures: project.exportFailures,
     canva: project.canva,
     nextActions,
-    deliveryComplete: project.canva.status === "complete" ||
-      (project.primaryOutput.status === "accepted" && project.canva.status === "not_checked")
+    localDeliveryComplete: project.primaryOutput.status === "accepted",
+    deliveryComplete: project.primaryOutput.status === "accepted" &&
+      ["not_checked", "declined", "complete"].includes(project.canva.status)
   };
 }

@@ -133,14 +133,15 @@ Generated files and resumable state stay inside the selected book-project direct
 
 The current DOCX must be explicitly accepted before any secondary output. A rework creates a new source revision, makes prior outputs stale, regenerates DOCX, and clears acceptance. After acceptance, PPTX and PDF may be created independently. Canva then:
 
-1. Record whether the host exposes an authorized Canva connector.
-2. Return installation/authorization guidance when unavailable.
+1. Record whether Canva is ready, unavailable, or requires authorization.
+2. Return distinct installation or authorization guidance without sending book content.
 3. Record the user's chosen Canva design.
 4. Pause for consent scoped to that design and source revision.
 5. Produce a connector-ready handoff.
-6. Validate the returned Canva URL against the `canva.com` domain.
+6. Persist an explicit decline or structured connector failure for later resume.
+7. Validate a successful HTTPS Canva design URL and require its path ID to match the returned design ID.
 
-The project never invents an edit link.
+The project never invents an edit link. Connector-specific tool names and arguments stay in the host adapter; the persisted handoff and result contracts remain neutral.
 
 ## Security and publishing
 

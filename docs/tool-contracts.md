@@ -56,11 +56,11 @@ PPTX uses a deterministic cover plus poem, fun-fact, and activity slide per crea
 
 ## `check_canva_readiness`
 
-Records host-reported connector availability. When unavailable, returns guided installation and authorization steps.
+Records host-reported `ready`, `unavailable`, or `authorization_required` state plus optional adapter metadata. It sends no book content. Unavailable and unauthorized states return distinct recovery guidance.
 
 ## `confirm_canva_handoff`
 
-Records explicit user consent after a design is selected. No handoff is available without consent for the current source revision.
+Persists explicit approval or decline after a design is selected. No handoff is available without approval for the current source revision. Decline is a terminal local-first delivery outcome and may later be restarted through readiness.
 
 ## `select_canva_design`
 
@@ -68,15 +68,15 @@ Records the user's design ID, title, optional template URL, and current source r
 
 ## `prepare_canva_handoff`
 
-Returns the reviewed page plan and connector-ready content. It does not call Canva itself.
+Returns the reviewed page plan in a versioned, adapter-neutral `create_editable_design` envelope with project/revision correlation. It does not call Canva itself. Retryable connector failures may resume with the same consent while the selected design and source revision remain unchanged.
 
 ## `record_canva_result`
 
-Records a real design ID and validates that the edit URL belongs to Canva.
+Accepts a discriminated `success` or `failed` result. Failures persist a code, safe message, retryability, and timestamp. Success requires an HTTPS Canva design URL whose path ID exactly matches `designId`; lookalike domains, credentials, arbitrary paths, and mismatches are rejected.
 
 ## `get_delivery_summary`
 
-Returns creatures covered, page count, review status, rework usage, accepted primary output, current local artifacts, stale artifacts, Canva state, and valid `nextActions`. The final delivery contains only formats genuinely created for the current source revision.
+Returns creatures covered, page count, review status, rework usage, accepted primary output, current local artifacts, stale artifacts, Canva state, `localDeliveryComplete`, and valid `nextActions`. The final delivery contains only formats genuinely created for the current source revision.
 
 Review state is independent from workflow stage:
 

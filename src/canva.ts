@@ -4,47 +4,87 @@ import type { CanvaState } from "./project.ts";
 import { normalizePoemText } from "./poems.ts";
 
 export const canvaCapabilitySchema = z.object({
-  available: z.boolean(),
+  status: z.enum(["ready", "unavailable", "authorization_required"]),
   connectorName: z.string().optional(),
   toolName: z.string().optional()
 });
 
-export const canvaResultSchema = z.object({
-  designId: z.string().min(1),
-  editUrl: z.string().url().refine((value) => {
-    const hostname = new URL(value).hostname.toLocaleLowerCase("en");
-    return hostname === "canva.com" || hostname.endsWith(".canva.com");
-  }, "The edit URL must use the canva.com domain.")
+const designIdSchema = z.string().trim().min(1).regex(/^[A-Za-z0-9_-]+$/, "The Canva design ID contains unsupported characters.");
+
+function isMatchingCanvaEditUrl(value: string, designId: string): boolean {
+  const url = new URL(value);
+  const hostname = url.hostname.toLocaleLowerCase("en");
+  if (url.protocol !== "https:" || url.username || url.password || (url.port && url.port !== "443")) return false;
+  if (hostname !== "canva.com" && !hostname.endsWith(".canva.com")) return false;
+  const match = url.pathname.match(/^\/design\/([^/]+)(?:\/edit)?\/?$/u);
+  if (!match) return false;
+  try {
+    return decodeURIComponent(match[1]) === designId;
+  } catch {
+    return false;
+  }
+}
+
+export const canvaResultSchema = z.discriminatedUnion("outcome", [
+  z.object({
+    outcome: z.literal("success"),
+    designId: designIdSchema,
+    editUrl: z.string().url()
+  }),
+  z.object({
+    outcome: z.literal("failed"),
+    code: z.string().trim().min(1),
+    message: z.string().trim().min(1),
+    retryable: z.boolean()
+  })
+]).superRefine((result, context) => {
+  if (result.outcome === "success" && !isMatchingCanvaEditUrl(result.editUrl, result.designId)) {
+    context.addIssue({ code: z.ZodIssueCode.custom, path: ["editUrl"], message: "The edit URL must be an HTTPS Canva design URL whose path matches designId." });
+  }
 });
 
-export function checkCanvaReadiness(capability: unknown): CanvaState & { setupInstructions?: string[] } {
+export function checkCanvaReadiness(capability: unknown): CanvaState {
   const parsed = canvaCapabilitySchema.parse(capability);
-  if (!parsed.available) {
+  const checkedAt = new Date().toISOString();
+  const adapter = parsed.connectorName || parsed.toolName
+    ? { connectorName: parsed.connectorName, toolName: parsed.toolName }
+    : undefined;
+  if (parsed.status !== "ready") {
     return {
       status: "setup_required",
-      setupInstructions: [
+      readiness: parsed.status,
+      checkedAt,
+      adapter,
+      setupInstructions: parsed.status === "authorization_required" ? [
+        "Open the host's connector or integration settings.",
+        "Authorize the intended Canva account, then run the readiness check again."
+      ] : [
         "Open Claude's connector or integration settings.",
-        "Install or enable Canva and authorize the intended Canva account.",
+        "Install or enable Canva, then authorize the intended Canva account.",
         "Return to this project and run the Canva readiness check again."
       ]
     };
   }
-  return { status: "design_selection_required" };
+  return { status: "design_selection_required", readiness: "ready", checkedAt, adapter };
 }
 
 export function recordCanvaConsent(consent: boolean): CanvaState {
-  if (!consent) return { status: "ready_for_consent" };
+  if (!consent) return { status: "declined", declinedAt: new Date().toISOString() };
   return { status: "consented", consentedAt: new Date().toISOString() };
 }
 
-export function prepareCanvaHandoff(request: BookRequest, content: BookContent, canva: CanvaState) {
-  if (canva.status !== "consented") throw new Error("Explicit Canva consent is required before preparing the handoff.");
+export function prepareCanvaHandoff(projectId: string, revision: number, request: BookRequest, content: BookContent, canva: CanvaState) {
+  if (canva.status !== "consented" && !(canva.status === "failed" && canva.failure?.retryable && canva.consentedAt)) {
+    throw new Error("Explicit Canva consent is required before preparing the handoff.");
+  }
   if (!canva.selection || canva.selection.sourceRevision !== canva.sourceRevision) {
     throw new Error("A Canva design must be selected for the current source revision.");
   }
   const slideCount = 1 + content.creatures.length * 3;
   return {
     handoffVersion: "1.0",
+    operation: "create_editable_design",
+    correlation: { projectId, revision },
     sourceRevision: canva.sourceRevision,
     selectedDesign: canva.selection,
     designType: "presentation",
@@ -76,5 +116,11 @@ export function prepareCanvaHandoff(request: BookRequest, content: BookContent, 
 
 export function recordCanvaResult(input: unknown): CanvaState {
   const result = canvaResultSchema.parse(input);
+  if (result.outcome === "failed") {
+    return {
+      status: "failed",
+      failure: { code: result.code, message: result.message, retryable: result.retryable, failedAt: new Date().toISOString() }
+    };
+  }
   return { status: "complete", designId: result.designId, editUrl: result.editUrl };
 }

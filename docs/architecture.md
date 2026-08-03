@@ -26,7 +26,9 @@
 
 ## Trust boundaries
 
-Claude output is untrusted input until schema and coverage validation succeeds. User-provided reference material is placed inside a data-only delimiter. Canva connector results are untrusted until the design identifier and Canva-domain URL validate.
+Claude output is untrusted input until schema and coverage validation succeeds. User-provided reference material is placed inside a data-only delimiter. Canva connector results are untrusted until their discriminated result schema, design identifier, HTTPS Canva design path, and matching URL identifier validate.
+
+The core has no Canva SDK or tool-name dependency. It emits a neutral handoff contract; the host-owned adapter handles connector discovery, authorization, invocation, and translation back to the neutral success/failure result.
 
 OAuth credentials are never handled or stored by this project.
 
@@ -35,6 +37,8 @@ OAuth credentials are never handled or stored by this project.
 The manifest stores both a bookkeeping `revision` and canonical `sourceRevision`, plus the project request, selection history, content, output checksums, DOCX acceptance, rework count, and Canva state. Exports retain the source revision that produced them, so older artifacts can be reported as stale instead of silently treated as current.
 
 The DOCX primary output is reviewed before secondary work begins. Up to two reworks may replace the canonical content and regenerate DOCX. The first warns that one rework remains; the second warns that none remain. Every rework increments `sourceRevision`, clears primary acceptance, and invalidates Canva state. PPTX and PDF are independent optional outputs. Canva is available only for an accepted DOCX at the current source revision and requires an explicit design selection before consent.
+
+Canva readiness distinguishes missing setup from missing authorization. Declines and connector failures are persisted. Retryable failures retain consent only for the unchanged selected design and source revision; rechecking readiness or changing canonical inputs returns the workflow to a fresh consent boundary.
 
 DOCX is the blocking local artifact. Its logical page sequence is one cover, three explicit pages per creature (poem, fun fact, activity), and an optional closing page. Validation, delivery summaries, and the exporter share this page-count contract. The exporter writes a temporary package before publishing the final filename, preserves source order and poem stanza/line boundaries, and records a digest only after publication.
 

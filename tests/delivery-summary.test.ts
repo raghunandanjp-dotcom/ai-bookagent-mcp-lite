@@ -128,4 +128,25 @@ describe("delivery summary review status", () => {
     project.content = { ...project.content!, closingNote: "Keep exploring!" };
     expect(deliverySummary(project).pageCount).toBe(5);
   });
+
+  it("reports declined Canva as completed local-first delivery", () => {
+    const project = projectWithContent("en", "source_supported");
+    project.primaryOutput = { status: "accepted", sourceRevision: project.sourceRevision, sha256: "a".repeat(64) };
+    project.canva = { status: "declined", declinedAt: "2026-08-03T10:00:00.000Z" };
+    const summary = deliverySummary(project);
+    expect(summary.localDeliveryComplete).toBe(true);
+    expect(summary.deliveryComplete).toBe(true);
+    expect(summary.nextActions).toContain("start_canva");
+  });
+
+  it("offers retry and readiness recovery after a retryable Canva failure", () => {
+    const project = projectWithContent("en", "source_supported");
+    project.primaryOutput = { status: "accepted", sourceRevision: project.sourceRevision, sha256: "a".repeat(64) };
+    project.canva = {
+      status: "failed",
+      consentedAt: "2026-08-03T10:00:00.000Z",
+      failure: { code: "timeout", message: "Timed out", retryable: true, failedAt: "2026-08-03T10:01:00.000Z" }
+    };
+    expect(deliverySummary(project).nextActions).toEqual(expect.arrayContaining(["prepare_canva_handoff", "start_canva"]));
+  });
 });
