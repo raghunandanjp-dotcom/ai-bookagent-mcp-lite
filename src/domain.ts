@@ -17,6 +17,19 @@ export const LIMITS = {
 
 export const languageSchema = z.enum(["en", "kn"]);
 export const ageBandSchema = z.enum(["3-5", "6-8", "9-11", "12-14"]);
+export type AgeBand = z.infer<typeof ageBandSchema>;
+export const rhymeSchemeSchema = z.enum(["AA", "AAB", "AABB"]);
+
+export const POEM_STRUCTURE_BY_AGE = {
+  "3-5": { stanzaCount: 2, linesPerStanza: 2, rhymeScheme: "AA", minWords: 8, maxWords: 40 },
+  "6-8": { stanzaCount: 2, linesPerStanza: 3, rhymeScheme: "AAB", minWords: 16, maxWords: 70 },
+  "9-11": { stanzaCount: 3, linesPerStanza: 4, rhymeScheme: "AABB", minWords: 30, maxWords: 130 },
+  "12-14": { stanzaCount: 4, linesPerStanza: 3, rhymeScheme: "AAB", minWords: 48, maxWords: 200 }
+} as const satisfies Record<AgeBand, object>;
+
+export const nextAgeBand = (ageBand: AgeBand): AgeBand => ({
+  "3-5": "6-8", "6-8": "9-11", "9-11": "12-14", "12-14": "12-14"
+})[ageBand] as AgeBand;
 export const creatureStatusSchema = z.enum(["living", "extinct", "mythical"]);
 
 export const creatureSchema = z.object({
@@ -51,10 +64,16 @@ export const contentSectionSchema = z.object({
   reviewStatus: z.enum(["needs_review", "human_reviewed", "source_supported"]).default("needs_review")
 });
 
+export const poemSectionSchema = contentSectionSchema.extend({
+  title: z.string().trim().min(1).max(80),
+  structureVersion: z.literal("1.0"),
+  rhymeScheme: rhymeSchemeSchema
+});
+
 export const creatureContentSchema = z.object({
   creatureId: z.string().min(1),
   displayName: z.string().min(1),
-  poem: contentSectionSchema,
+  poem: poemSectionSchema,
   funFact: contentSectionSchema,
   activity: contentSectionSchema,
   illustrationBrief: z.string().min(1),
@@ -62,9 +81,12 @@ export const creatureContentSchema = z.object({
 });
 
 export const bookContentSchema = z.object({
-  schemaVersion: z.literal("1.0"),
+  schemaVersion: z.literal("1.1"),
   title: z.string().min(1),
   language: languageSchema,
+  selectedAgeBand: ageBandSchema,
+  effectiveAgeBand: ageBandSchema,
+  generationAttempt: z.number().int().min(0).max(2),
   creatures: z.array(creatureContentSchema).min(1).max(LIMITS.maxCreatures),
   closingNote: z.string().optional()
 });

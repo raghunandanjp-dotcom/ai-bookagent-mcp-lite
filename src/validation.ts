@@ -2,10 +2,12 @@ import {
   LIMITS,
   bookContentSchema,
   type BookContent,
+  type BookRequest,
   type Creature,
   type ValidationIssue,
   type ValidationReport
 } from "./domain.ts";
+import { analyzePoem, poemStructure } from "./poems.ts";
 
 function words(value: string): number {
   return value.trim().split(/\s+/u).filter(Boolean).length;
@@ -13,7 +15,9 @@ function words(value: string): number {
 
 export function validateBookContent(
   input: unknown,
-  approvedCreatures: Creature[]
+  approvedCreatures: Creature[],
+  request?: BookRequest,
+  expectedAttempt?: number
 ): { content?: BookContent; report: ValidationReport } {
   const issues: ValidationIssue[] = [];
   const parsed = bookContentSchema.safeParse(input);
@@ -40,6 +44,13 @@ export function validateBookContent(
   }
 
   const content = parsed.data;
+  const selectedAgeBand = request?.ageBand ?? content.selectedAgeBand;
+  if (content.selectedAgeBand !== selectedAgeBand) {
+    issues.push({ level: "error", code: "selected_age_mismatch", path: "selectedAgeBand", message: "Content selected age does not match the project." });
+  }
+  if (expectedAttempt !== undefined && content.generationAttempt !== expectedAttempt) {
+    issues.push({ level: "error", code: "generation_attempt_mismatch", path: "generationAttempt", message: "Content generation attempt does not match the active prompt." });
+  }
   const expected = new Set(approvedCreatures.map((creature) => creature.id));
   const actual = new Set(content.creatures.map((creature) => creature.creatureId));
   const duplicateIds = content.creatures
@@ -60,6 +71,15 @@ export function validateBookContent(
 
   let wordCount = 0;
   for (const [index, creature] of content.creatures.entries()) {
+    const poem = analyzePoem(creature.poem.text);
+    const structure = poemStructure(content.effectiveAgeBand);
+    const poemPath = `creatures.${index}.poem`;
+    if (poem.stanzas.length !== structure.stanzaCount) issues.push({ level: "error", code: "poem_stanza_count", path: `${poemPath}.text`, message: `Poem requires exactly ${structure.stanzaCount} stanzas.` });
+    if (poem.stanzas.some((stanza) => stanza.length !== structure.linesPerStanza)) issues.push({ level: "error", code: "poem_line_count", path: `${poemPath}.text`, message: `Every stanza requires exactly ${structure.linesPerStanza} lines.` });
+    if (creature.poem.rhymeScheme !== structure.rhymeScheme) issues.push({ level: "error", code: "poem_rhyme_scheme", path: `${poemPath}.rhymeScheme`, message: `Expected rhyme scheme ${structure.rhymeScheme}.` });
+    if (poem.normalizedStanzas.some((stanza, stanzaIndex, all) => stanzaIndex > 0 && stanza === all[stanzaIndex - 1])) issues.push({ level: "error", code: "duplicate_adjacent_stanza", path: `${poemPath}.text`, message: "A poem cannot repeat the same stanza immediately." });
+    if (poem.wordCount < structure.minWords || poem.wordCount > structure.maxWords) issues.push({ level: "warning", code: "poem_word_count", path: `${poemPath}.text`, message: `Poem word count should be ${structure.minWords}-${structure.maxWords} for ages ${content.effectiveAgeBand}.` });
+    if (creature.poem.language !== content.language) issues.push({ level: "error", code: "poem_language_mismatch", path: `${poemPath}.language`, message: "Poem language must match the book language." });
     for (const sectionName of ["poem", "funFact", "activity"] as const) {
       const count = words(creature[sectionName].text);
       wordCount += count;

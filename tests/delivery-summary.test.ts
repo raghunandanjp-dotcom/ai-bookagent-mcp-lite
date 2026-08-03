@@ -19,13 +19,16 @@ function content(
 ): BookContent {
   const text = language === "kn" ? "ಆಕ್ಟೋಪಸ್ ಸಮುದ್ರದಲ್ಲಿ ಈಜುತ್ತದೆ." : "An octopus swims in the sea.";
   return {
-    schemaVersion: "1.0",
+    schemaVersion: "1.1",
     title: language === "kn" ? "ಸಾಗರ ಸ್ನೇಹಿತರು" : "Ocean Friends",
     language,
+    selectedAgeBand: "6-8",
+    effectiveAgeBand: "6-8",
+    generationAttempt: 0,
     creatures: [{
       creatureId: "octopus",
       displayName: language === "kn" ? "ಆಕ್ಟೋಪಸ್" : "Octopus",
-      poem: { text, language, reviewStatus: "human_reviewed" },
+      poem: { text: `${text}\n${text}\n${text}\n\n${text}\n${text}\n${text}`, language, reviewStatus: "human_reviewed", title: language === "kn" ? "ಸಮುದ್ರ ಗೀತೆ" : "Ocean Song", structureVersion: "1.0", rhymeScheme: "AAB" },
       funFact: { text, language, reviewStatus: funFactReviewStatus },
       activity: { text, language, reviewStatus: "human_reviewed" },
       illustrationBrief: "A friendly octopus underwater.",

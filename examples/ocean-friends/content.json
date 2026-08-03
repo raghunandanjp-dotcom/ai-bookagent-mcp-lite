@@ -1,13 +1,19 @@
 {
-  "schemaVersion": "1.0",
+  "schemaVersion": "1.1",
   "title": "Ocean Friends",
   "language": "en",
+  "selectedAgeBand": "6-8",
+  "effectiveAgeBand": "6-8",
+  "generationAttempt": 0,
   "creatures": [
     {
       "creatureId": "octopus",
       "displayName": "Octopus",
       "poem": {
-        "text": "Eight gentle arms in the shimmering sea,\nWaving a watery hello to me.",
+        "title": "Eight Waving Arms",
+        "structureVersion": "1.0",
+        "rhymeScheme": "AAB",
+        "text": "Eight gentle arms in the shimmering sea,\nWaving a watery hello to me,\nThen curling close beside a stone.\n\nThrough coral gardens, soft and bright,\nThe octopus glides out of sight,\nAnd finds a quiet cave called home.",
         "language": "en",
         "reviewStatus": "needs_review"
       },
@@ -28,7 +34,10 @@
       "creatureId": "green-sea-turtle",
       "displayName": "Green Sea Turtle",
       "poem": {
-        "text": "Flippers glide where sea grasses sway,\nA turtle cruises through the day.",
+        "title": "Seagrass Sailor",
+        "structureVersion": "1.0",
+        "rhymeScheme": "AAB",
+        "text": "Flippers glide where sea grasses sway,\nA turtle cruises through the day,\nAcross the ocean blue.\n\nIt rises gently for some air,\nThen travels onward without care,\nWith silver bubbles too.",
         "language": "en",
         "reviewStatus": "needs_review"
       },
@@ -49,7 +58,10 @@
       "creatureId": "clownfish",
       "displayName": "Clownfish",
       "poem": {
-        "text": "Orange and white in an anemone bright,\nA clownfish darts left, then slips out of sight.",
+        "title": "Clownfish Hideaway",
+        "structureVersion": "1.0",
+        "rhymeScheme": "AAB",
+        "text": "Orange and white in a garden bright,\nA clownfish darts and slips from sight,\nAmong the waving green.\n\nIt peeks outside, then turns around,\nAnd dances softly without sound,\nThe quickest fish we've seen.",
         "language": "en",
         "reviewStatus": "needs_review"
       },
@@ -70,7 +82,10 @@
       "creatureId": "bottlenose-dolphin",
       "displayName": "Bottlenose Dolphin",
       "poem": {
-        "text": "Up through the sparkle, over the foam,\nA dolphin whistles on its way home.",
+        "title": "Dolphin in the Foam",
+        "structureVersion": "1.0",
+        "rhymeScheme": "AAB",
+        "text": "Up through the sparkle, over the foam,\nA dolphin whistles on its way home,\nThen dives beneath the spray.\n\nIt races where the bright waves gleam,\nAnd leaps as lightly as a dream,\nBefore it swims away.",
         "language": "en",
         "reviewStatus": "needs_review"
       },
@@ -91,7 +106,10 @@
       "creatureId": "seahorse",
       "displayName": "Seahorse",
       "poem": {
-        "text": "A curly tail holds on so tight,\nWhile a seahorse bobs in morning light.",
+        "title": "Curly-Tail Dance",
+        "structureVersion": "1.0",
+        "rhymeScheme": "AAB",
+        "text": "A curly tail holds on so tight,\nA seahorse bobs in morning light,\nBeside the grasses green.\n\nIt rocks along the gentle tide,\nWith tiny fins on either side,\nA dancer small and keen.",
         "language": "en",
         "reviewStatus": "needs_review"
       },

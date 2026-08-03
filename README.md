@@ -6,7 +6,7 @@ A lightweight, host-assisted Model Context Protocol server for creating children
 
 Each approved creature receives:
 
-1. A poem
+1. A titled, age-structured poem
 2. A factual fun section
 3. A safe activity
 
@@ -22,15 +22,20 @@ The mandatory artifact is DOCX. PPTX and PDF are optional and are generated befo
 - English: standard
 - Kannada: experimental and requires human review
 - Audience: ages 3-14
+- Age is the only poem-structure choice; stanza, line, rhyme, and word defaults are automatic
+- Two poem iterations: the first stays in the selected age band and the second advances one band (12–14 remains 12–14)
 - Canva: optional, resumable, and explicitly consent-gated
 
 ## Workflow
 
 ```text
 brief
+  -> choose age once
   -> creature list
   -> approve / manually edit / regenerate (at most twice)
   -> host-assisted Claude prompt batches
+  -> optional poem iteration 1 (same age)
+  -> optional poem iteration 2 (next age; 12-14 remains unchanged)
   -> validate structured content
   -> DOCX
   -> optional PPTX/PDF
@@ -41,6 +46,19 @@ brief
 ```
 
 The MCP does not install Canva, perform OAuth, or call paid model APIs. Claude/Canva setup remains under the user's control.
+
+## Poem defaults
+
+| Age | Stanzas | Lines per stanza | Rhyme |
+| --- | ---: | ---: | --- |
+| 3–5 | 2 | 2 | AA |
+| 6–8 | 2 | 3 | AAB |
+| 9–11 | 3 | 4 | AABB |
+| 12–14 | 4 | 3 | AAB |
+
+Every poem has a short title. Line and stanza breaks are preserved in every export. Immediate full-stanza repetition is rejected. English rhyme follows the declared scheme; experimental Kannada is authored as a native adaptation and requires human review. See [MVP poem structure](docs/poem-structure.md).
+
+These rules are the upstream content contract for DOCX, PPTX, PDF, and Canva work. Exporter-specific tasks may change layout and rendering, but should not redefine poem structure or the age-iteration sequence.
 
 ## Requirements
 
@@ -87,6 +105,7 @@ ai-bookagent init ./my-book ./request.json
 ai-bookagent select ./my-book ./creatures.json
 ai-bookagent approve ./my-book
 ai-bookagent prompt ./my-book
+# A host may call the reiterate_authoring_prompt MCP tool up to twice.
 ai-bookagent content ./my-book ./claude-content.json
 ai-bookagent export ./my-book docx,pptx,pdf
 ai-bookagent summary ./my-book
