@@ -1,7 +1,9 @@
 import {
   LIMITS,
+  PPTX_AGE_PROFILES,
   bookContentSchema,
   type BookContent,
+  type BookRequest,
   type Creature,
   type ValidationIssue,
   type ValidationReport
@@ -11,9 +13,18 @@ function words(value: string): number {
   return value.trim().split(/\s+/u).filter(Boolean).length;
 }
 
+function characters(value: string): number {
+  return Array.from(value).length;
+}
+
+function explicitLines(value: string): number {
+  return value.split(/\r?\n/u).length;
+}
+
 export function validateBookContent(
   input: unknown,
-  approvedCreatures: Creature[]
+  approvedCreatures: Creature[],
+  context: Pick<BookRequest, "ageBand" | "language"> = { ageBand: "6-8", language: "en" }
 ): { content?: BookContent; report: ValidationReport } {
   const issues: ValidationIssue[] = [];
   const parsed = bookContentSchema.safeParse(input);
@@ -40,6 +51,10 @@ export function validateBookContent(
   }
 
   const content = parsed.data;
+  const profile = PPTX_AGE_PROFILES[context.ageBand];
+  if (content.language !== context.language) {
+    issues.push({ level: "error", code: "book_language_mismatch", path: "language", message: `Content language ${content.language} does not match requested language ${context.language}.` });
+  }
   const expected = new Set(approvedCreatures.map((creature) => creature.id));
   const actual = new Set(content.creatures.map((creature) => creature.creatureId));
   const duplicateIds = content.creatures
@@ -62,14 +77,27 @@ export function validateBookContent(
   for (const [index, creature] of content.creatures.entries()) {
     for (const sectionName of ["poem", "funFact", "activity"] as const) {
       const count = words(creature[sectionName].text);
+      const characterCount = characters(creature[sectionName].text);
+      const lineCount = explicitLines(creature[sectionName].text);
+      const limit = profile.sections[sectionName];
+      const characterLimit = content.language === "kn" ? Math.floor(limit.characters * 0.85) : limit.characters;
       wordCount += count;
-      if (count > LIMITS.maxSectionWords) {
+      if (creature[sectionName].language !== content.language) {
+        issues.push({ level: "error", code: "section_language_mismatch", path: `creatures.${index}.${sectionName}.language`, message: `${sectionName} language does not match the book language.` });
+      }
+      if (count > limit.words) {
         issues.push({
           level: "error",
-          code: "section_too_long",
+          code: "section_word_overflow",
           path: `creatures.${index}.${sectionName}.text`,
-          message: `${sectionName} exceeds ${LIMITS.maxSectionWords} words.`
+          message: `${sectionName} exceeds the ${context.ageBand} limit of ${limit.words} words.`
         });
+      }
+      if (characterCount > characterLimit) {
+        issues.push({ level: "error", code: "section_character_overflow", path: `creatures.${index}.${sectionName}.text`, message: `${sectionName} exceeds the ${context.ageBand}${content.language === "kn" ? " Kannada" : ""} limit of ${characterLimit} characters.` });
+      }
+      if (lineCount > profile.maxExplicitLines) {
+        issues.push({ level: "error", code: "section_line_overflow", path: `creatures.${index}.${sectionName}.text`, message: `${sectionName} exceeds the ${context.ageBand} limit of ${profile.maxExplicitLines} explicit lines.` });
       }
     }
     if (creature.funFact.reviewStatus === "needs_review") {
@@ -101,6 +129,9 @@ export function validateBookContent(
   }
   if (wordCount > LIMITS.maxTotalWords) {
     issues.push({ level: "error", code: "word_limit", path: "creatures", message: `Total word count ${wordCount} exceeds ${LIMITS.maxTotalWords}.` });
+  }
+  if (content.language === "kn") {
+    issues.push({ level: "warning", code: "kannada_pptx_font_required", path: "language", message: "Kannada PPTX output references Noto Sans Kannada but does not embed it; install the font on viewing and editing systems." });
   }
 
   return {

@@ -12,7 +12,34 @@ export const LIMITS = {
   maxBriefCharacters: 20_000,
   maxCreatureNameCharacters: 100,
   maxSectionWords: 250,
+  maxDisplayNameCharacters: 80,
+  maxIllustrationBriefCharacters: 400,
+  maxAltTextCharacters: 300,
+  maxClosingNoteCharacters: 240,
   maxTotalWords: 25_000
+} as const;
+
+export const PPTX_AGE_PROFILES = {
+  "3-5": {
+    creatureTitleFontSize: 30, sectionTitleFontSize: 24, bodyFontSize: 28,
+    maxExplicitLines: 8,
+    sections: { poem: { words: 40, characters: 260 }, funFact: { words: 25, characters: 180 }, activity: { words: 30, characters: 220 } }
+  },
+  "6-8": {
+    creatureTitleFontSize: 28, sectionTitleFontSize: 24, bodyFontSize: 24,
+    maxExplicitLines: 10,
+    sections: { poem: { words: 60, characters: 400 }, funFact: { words: 40, characters: 280 }, activity: { words: 50, characters: 340 } }
+  },
+  "9-11": {
+    creatureTitleFontSize: 26, sectionTitleFontSize: 24, bodyFontSize: 21,
+    maxExplicitLines: 12,
+    sections: { poem: { words: 90, characters: 600 }, funFact: { words: 60, characters: 420 }, activity: { words: 75, characters: 520 } }
+  },
+  "12-14": {
+    creatureTitleFontSize: 24, sectionTitleFontSize: 24, bodyFontSize: 18,
+    maxExplicitLines: 14,
+    sections: { poem: { words: 120, characters: 800 }, funFact: { words: 80, characters: 560 }, activity: { words: 100, characters: 700 } }
+  }
 } as const;
 
 export const languageSchema = z.enum(["en", "kn"]);
@@ -49,25 +76,25 @@ export const contentSectionSchema = z.object({
   text: z.string().min(1),
   language: languageSchema,
   reviewStatus: z.enum(["needs_review", "human_reviewed", "source_supported"]).default("needs_review")
-});
+}).strict();
 
 export const creatureContentSchema = z.object({
   creatureId: z.string().min(1),
-  displayName: z.string().min(1),
+  displayName: z.string().min(1).max(LIMITS.maxDisplayNameCharacters),
   poem: contentSectionSchema,
   funFact: contentSectionSchema,
   activity: contentSectionSchema,
-  illustrationBrief: z.string().min(1),
-  altText: z.string().min(1)
-});
+  illustrationBrief: z.string().min(1).max(LIMITS.maxIllustrationBriefCharacters),
+  altText: z.string().min(1).max(LIMITS.maxAltTextCharacters)
+}).strict();
 
 export const bookContentSchema = z.object({
   schemaVersion: z.literal("1.0"),
   title: z.string().min(1),
   language: languageSchema,
   creatures: z.array(creatureContentSchema).min(1).max(LIMITS.maxCreatures),
-  closingNote: z.string().optional()
-});
+  closingNote: z.string().max(LIMITS.maxClosingNoteCharacters).optional()
+}).strict();
 
 export const selectionAttemptSchema = z.object({
   attempt: z.number().int().min(0).max(LIMITS.maxRegenerations),

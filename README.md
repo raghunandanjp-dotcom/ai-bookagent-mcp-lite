@@ -12,6 +12,8 @@ Each approved creature receives:
 
 The mandatory artifact is DOCX. PPTX and PDF are optional and are generated before the optional Canva phase.
 
+PPTX output uses editable native text and shapes with a deterministic cover plus poem, fun-fact, and activity slide for every creature (`1 + 3 × creatures`). Age-band typography, blocking overflow limits, structural checks, accessibility behavior, and visual QA are specified in [MVP PowerPoint generation](docs/pptx-generation.md).
+
 ### Boundaries
 
 - Default: 5 creatures
@@ -79,6 +81,8 @@ Kannada DOCX/PPTX uses the `Noto Sans Kannada` font family. Kannada PDF export
 also requires `BOOK_AGENT_KANNADA_FONT_PATH` in the user's uncommitted `.env`
 file so the font can be embedded. The exporter fails clearly instead of
 producing a PDF with missing glyphs.
+
+PPTX does not embed `Noto Sans Kannada`; Kannada decks therefore include an export warning and require the font on every viewing or editing system.
 
 ## CLI
 

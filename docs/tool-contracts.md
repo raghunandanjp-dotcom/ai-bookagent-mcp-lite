@@ -18,11 +18,11 @@ Produces host-assisted prompt batches. More than ten creatures are split into gr
 
 ## `validate_book_content`
 
-Validates schema, approved-creature coverage, duplicates, unexpected creatures, language script, section limits, projected pages, total words, and review flags.
+Validates schema, approved-creature coverage, duplicates, unexpected creatures, requested and section language, age-band PPTX word/character/line limits, projected pages, total words, placeholder bounds, and review flags. Presentation overflow is blocking rather than silently shrunk or paginated.
 
 ## `create_document_exports`
 
-Always creates DOCX. It may also create PPTX and PDF. All file locations remain inside the book-project directory.
+Always creates DOCX. It may also create PPTX and PDF. All file locations remain inside the book-project directory. Kannada PPTX records a warning because `Noto Sans Kannada` is referenced but not embedded.
 
 ## `check_canva_readiness`
 

@@ -78,7 +78,7 @@ export async function createPromptPackage(projectDir: string) {
 export async function acceptBookContent(projectDir: string, contentInput: unknown) {
   const project = await loadProject(projectDir);
   if (!project.selection.approved) throw new Error("Approve the creature list before accepting book content.");
-  const result = validateBookContent(contentInput, project.selection.current);
+  const result = validateBookContent(contentInput, project.selection.current, project.request);
   const stage =
     !result.report.valid ? "content_review_required" :
     project.request.language === "kn" ? "language_review_required" :
@@ -106,7 +106,7 @@ export async function replaceCreatureContent(projectDir: string, creatureInput: 
   const creatures = [...project.content.creatures];
   creatures[existingIndex] = replacement;
   const content = { ...project.content, creatures };
-  const validation = validateBookContent(content, project.selection.current);
+  const validation = validateBookContent(content, project.selection.current, project.request);
   const updated = await persistMutation(projectDir, project, {
     stage: validation.report.valid
       ? project.request.language === "kn" ? "language_review_required" : "content_review_required"
@@ -124,10 +124,10 @@ export async function generateDocuments(
 ): Promise<BookProject> {
   const project = await loadProject(projectDir);
   const content: BookContent = bookContentSchema.parse(project.content);
-  const validation = validateBookContent(content, project.selection.current);
+  const validation = validateBookContent(content, project.selection.current, project.request);
   if (!validation.report.valid) throw new Error("Book content has blocking validation errors.");
   const exportDir = resolveInside(projectDir, "exports");
-  const records = await exportSelectedFormats(content, exportDir, formats ?? project.request.outputFormats);
+  const records = await exportSelectedFormats(content, exportDir, formats ?? project.request.outputFormats, project.request);
   return persistMutation(projectDir, project, {
     stage: "documents_ready",
     exports: records
@@ -169,10 +169,10 @@ export async function acceptCanvaResult(projectDir: string, result: unknown): Pr
 
 export function deliverySummary(project: BookProject) {
   const validation = project.content
-    ? validateBookContent(project.content, project.selection.current)
+    ? validateBookContent(project.content, project.selection.current, project.request)
     : undefined;
   const contentReviewIssues = validation?.report.issues
-    .filter((issue) => issue.level === "warning")
+    .filter((issue) => issue.level === "warning" && issue.code !== "kannada_pptx_font_required")
     .map(({ code, path, message }) => ({ code, path, message })) ?? [];
 
   return {
