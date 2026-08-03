@@ -17,7 +17,7 @@
 - `poems.ts`: canonical age defaults, iteration progression, normalization, and structural analysis.
 - `validation.ts`: schema, coverage, page, word, language, and review checks.
 - `project.ts`: atomic manifest persistence, provenance, paths, and checksums.
-- `exporters.ts`: deterministic DOCX, PPTX, and PDF creation. PPTX uses age-band layout profiles and editable Office text/shapes.
+- `exporters.ts`: DOCX-first export orchestration plus deterministic DOCX, editable age-profiled PPTX, and fixed-page PDF creation. Optional failures are isolated from successful artifacts.
 - `canva.ts`: readiness, consent, handoff, and URL validation.
 - `workflow.ts`: stateful orchestration.
 - `server.ts`: MCP tools.

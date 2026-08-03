@@ -1,6 +1,7 @@
 import { createWriteStream } from "node:fs";
-import { mkdir, rename, rm, writeFile } from "node:fs/promises";
+import { access, mkdir, rename, rm, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import {
   AlignmentType,
   BorderStyle,
@@ -18,7 +19,7 @@ import { randomUUID } from "node:crypto";
 import JSZip from "jszip";
 import { createRequire } from "node:module";
 import { DOCX_TYPOGRAPHY_BY_AGE, PPTX_AGE_PROFILES, type BookContent, type BookRequest } from "./domain.ts";
-import { fileDigest, safeOutputName, type ExportRecord } from "./project.ts";
+import { fileDigest, safeOutputName, type ExportFailure, type ExportRecord } from "./project.ts";
 import { normalizePoemText } from "./poems.ts";
 
 const require = createRequire(import.meta.url);
@@ -30,6 +31,24 @@ const COLORS = {
   cream: "FFF9ED",
   ink: "263238"
 };
+
+const PDF = {
+  margin: 56,
+  footerHeight: 24,
+  maxBytes: 25 * 1024 * 1024,
+  bodyFontSize: 13,
+  bodyLineGap: 5
+} as const;
+const moduleDir = path.dirname(fileURLToPath(import.meta.url));
+const englishRegularFont = path.resolve(moduleDir, "../assets/fonts/NotoSans-Regular.ttf");
+const englishBoldFont = path.resolve(moduleDir, "../assets/fonts/NotoSans-Bold.ttf");
+
+export class PdfExportError extends Error {
+  constructor(public readonly code: string, message: string) {
+    super(message);
+    this.name = "PdfExportError";
+  }
+}
 
 function documentFont(language: BookContent["language"]): string {
   return language === "kn" ? "Noto Sans Kannada" : "Arial";
@@ -261,36 +280,89 @@ export async function exportPdf(content: BookContent, exportDir: string): Promis
   await mkdir(exportDir, { recursive: true });
   const filename = `${safeOutputName(content.title)}.pdf`;
   const outputPath = path.join(exportDir, filename);
-  await new Promise<void>((resolve, reject) => {
-    const pdf = new PDFDocument({ size: "A4", margins: { top: 56, right: 56, bottom: 56, left: 56 }, info: { Title: content.title, Author: "AI Book Agent MCP Lite" } });
-    if (content.language === "kn") {
-      const fontPath = process.env.BOOK_AGENT_KANNADA_FONT_PATH;
-      if (!fontPath) {
-        reject(new Error("Kannada PDF export requires BOOK_AGENT_KANNADA_FONT_PATH to point to a Kannada-capable TTF font."));
-        return;
+  const temporaryPath = `${outputPath}.tmp`;
+  const regularFont = content.language === "kn" ? process.env.BOOK_AGENT_KANNADA_FONT_PATH : englishRegularFont;
+  const boldFont = content.language === "kn" ? regularFont : englishBoldFont;
+  if (!regularFont) throw new PdfExportError("pdf_font_missing", "Kannada PDF export requires BOOK_AGENT_KANNADA_FONT_PATH to point to a Kannada-capable TTF font.");
+  try {
+    await access(regularFont);
+    await access(boldFont!);
+  } catch {
+    throw new PdfExportError("pdf_font_missing", `PDF font is not readable: ${regularFont}`);
+  }
+  await rm(temporaryPath, { force: true });
+  try {
+    await new Promise<void>((resolve, reject) => {
+    const pdf = new PDFDocument({
+      size: "A4",
+      autoFirstPage: false,
+      margins: { top: PDF.margin, right: PDF.margin, bottom: PDF.margin, left: PDF.margin },
+      info: { Title: content.title, Author: "AI Book Agent MCP Lite", Subject: "Children's creature poetry activity book", Creator: "AI Book Agent MCP Lite" }
+    });
+    try {
+      pdf.registerFont("BookRegular", regularFont);
+      pdf.registerFont("BookBold", boldFont!);
+      pdf.font("BookRegular");
+      if (content.language === "kn") {
+        const usedText = [content.title, ...content.creatures.flatMap((creature) => [creature.displayName, creature.poem.title, creature.poem.text, creature.funFact.text, creature.activity.text, creature.illustrationBrief])].join("\n");
+        const internalFont = (pdf as unknown as { _font?: { font?: { layout(value: string): { glyphs: Array<{ id: number }> } } } })._font?.font;
+        if (internalFont?.layout(usedText).glyphs.some((glyph) => glyph.id === 0)) throw new PdfExportError("pdf_glyph_missing", "The configured Kannada font does not cover every character used by this book.");
       }
-      pdf.registerFont("BookFont", fontPath);
-      pdf.font("BookFont");
+    } catch (error) {
+      reject(error instanceof PdfExportError ? error : new PdfExportError("pdf_font_invalid", `PDF font could not be loaded: ${String(error)}`));
+      return;
     }
-    const stream = createWriteStream(outputPath, { flags: "w" });
+    const stream = createWriteStream(temporaryPath, { flags: "wx" });
     stream.on("finish", resolve);
     stream.on("error", reject);
     pdf.on("error", reject);
     pdf.pipe(stream);
-    pdf.fillColor(`#${COLORS.navy}`).fontSize(30).text(content.title, { align: "center" });
-    pdf.moveDown().fillColor(`#${COLORS.teal}`).fontSize(16).text(`${content.creatures.length} wonderful creatures`, { align: "center" });
-    for (const creature of content.creatures) {
+    const totalPages = 1 + content.creatures.length * 3;
+    const addPage = (pageNumber: number, creatureName?: string, section?: string) => {
       pdf.addPage();
-      pdf.fillColor(`#${COLORS.navy}`).fontSize(24).text(creature.displayName);
-      for (const key of ["poem", "funFact", "activity"] as const) {
-        pdf.moveDown(0.8).fillColor(`#${key === "funFact" ? COLORS.coral : COLORS.teal}`).fontSize(16).text(sectionTitle(key));
-        const body = key === "poem" ? `${creature.poem.title}\n\n${normalizePoemText(creature.poem.text)}` : creature[key].text;
-        pdf.moveDown(0.25).fillColor(`#${COLORS.ink}`).fontSize(14).text(body, { lineGap: 4 });
+      if (creatureName && section) {
+        pdf.font("BookRegular").fillColor("#68737D").fontSize(10).text(`${creatureName} · ${section}`, PDF.margin, 30, { width: pdf.page.width - 2 * PDF.margin });
       }
-      pdf.moveDown().fillColor("#5C6770").fontSize(11).text(`Illustration idea: ${creature.illustrationBrief}`);
+      pdf.font("BookRegular").fillColor("#68737D").fontSize(9).text(`${content.title} · Page ${pageNumber} of ${totalPages}`, PDF.margin, pdf.page.height - PDF.margin - 12, { width: pdf.page.width - 2 * PDF.margin, height: 12, align: "center", lineBreak: false });
+    };
+    addPage(1);
+    pdf.font("BookBold").fillColor(`#${COLORS.navy}`).fontSize(30).text(content.title, PDF.margin, 220, { width: pdf.page.width - 2 * PDF.margin, align: "center" });
+    pdf.moveDown().font("BookRegular").fillColor(`#${COLORS.teal}`).fontSize(16).text(`${content.creatures.length} wonderful creatures`, { align: "center" });
+    let pageNumber = 1;
+    for (const creature of content.creatures) {
+      for (const key of ["poem", "funFact", "activity"] as const) {
+        pageNumber += 1;
+        const label = sectionTitle(key);
+        addPage(pageNumber, creature.displayName, label);
+        pdf.font("BookBold").fillColor(`#${COLORS.navy}`).fontSize(24).text(creature.displayName, PDF.margin, 64, { width: pdf.page.width - 2 * PDF.margin });
+        pdf.moveDown(0.45).fillColor(`#${key === "funFact" ? COLORS.coral : COLORS.teal}`).fontSize(16).text(label);
+        if (key === "poem") pdf.moveDown(0.25).font("BookBold").fillColor(`#${COLORS.ink}`).fontSize(15).text(creature.poem.title);
+        const body = key === "poem" ? normalizePoemText(creature.poem.text) : creature[key].text;
+        const bodyY = pdf.y + 10;
+        const bodyWidth = pdf.page.width - 2 * PDF.margin;
+        const illustrationHeight = key === "activity" ? 76 : 0;
+        const availableHeight = pdf.page.height - PDF.margin - PDF.footerHeight - bodyY - illustrationHeight;
+        pdf.font("BookRegular").fontSize(PDF.bodyFontSize);
+        const measuredHeight = pdf.heightOfString(body, { width: bodyWidth, lineGap: PDF.bodyLineGap });
+        if (measuredHeight > availableHeight) {
+          reject(new PdfExportError("pdf_text_overflow", `${creature.creatureId}.${key} requires ${Math.ceil(measuredHeight)}pt but only ${Math.floor(availableHeight)}pt is available.`));
+          return;
+        }
+        pdf.fillColor(`#${COLORS.ink}`).text(body, PDF.margin, bodyY, { width: bodyWidth, height: availableHeight, lineGap: PDF.bodyLineGap });
+        if (key === "activity") {
+          pdf.font("BookRegular").fillColor("#5C6770").fontSize(10).text(`Illustration idea: ${creature.illustrationBrief}\nAlt text: ${creature.altText}`, PDF.margin, pdf.page.height - PDF.margin - PDF.footerHeight - 58, { width: bodyWidth, height: 58 });
+        }
+      }
     }
     pdf.end();
-  });
+    });
+    const details = await stat(temporaryPath);
+    if (details.size > PDF.maxBytes) throw new PdfExportError("pdf_file_too_large", "PDF exceeds the 25 MiB MVP size limit.");
+    await rename(temporaryPath, outputPath);
+  } catch (error) {
+    await rm(temporaryPath, { force: true });
+    throw error;
+  }
   const digest = await fileDigest(outputPath);
   return { format: "pdf", relativePath: filename, ...digest, createdAt: new Date().toISOString() };
 }
@@ -300,13 +372,19 @@ export async function exportSelectedFormats(
   exportDir: string,
   formats: Array<"docx" | "pptx" | "pdf">,
   context: Pick<BookRequest, "ageBand" | "language"> = { ageBand: content.effectiveAgeBand, language: content.language }
-): Promise<ExportRecord[]> {
+): Promise<{ records: ExportRecord[]; failures: ExportFailure[] }> {
   const unique = Array.from(new Set(["docx" as const, ...formats]));
   const records: ExportRecord[] = [];
+  const failures: ExportFailure[] = [];
   for (const format of unique) {
-    if (format === "docx") records.push(await exportDocx(content, exportDir));
-    if (format === "pptx") records.push(await exportPptx(content, exportDir, context));
-    if (format === "pdf") records.push(await exportPdf(content, exportDir));
+    try {
+      if (format === "docx") records.push(await exportDocx(content, exportDir));
+      if (format === "pptx") records.push(await exportPptx(content, exportDir, context));
+      if (format === "pdf") records.push(await exportPdf(content, exportDir));
+    } catch (error) {
+      failures.push({ format, code: error instanceof PdfExportError ? error.code : `${format}_export_failed`, message: error instanceof Error ? error.message : String(error) });
+      if (format === "docx") break;
+    }
   }
-  return records;
+  return { records, failures };
 }

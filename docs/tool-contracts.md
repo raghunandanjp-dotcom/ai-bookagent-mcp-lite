@@ -40,7 +40,7 @@ DOCX fun-fact and activity budgets are 70 words for ages 3–5, 100 for 6–8, 1
 
 DOCX generation uses only local libraries. LibreOffice and Poppler are optional reference-rendering dependencies and are not required to create an editable DOCX.
 
-Always creates DOCX. It may also create PPTX and PDF. All file locations remain inside the book-project directory.
+Optional-format failures preserve successful artifacts and produce a `partially_complete` project with structured `exportFailures`; mandatory DOCX failure remains blocking. PDF follows the deterministic local specification in [MVP PDF generation](pdf-generation.md).
 
 PPTX uses a deterministic cover plus poem, fun-fact, and activity slide per creature. It preserves editable text and placeholders. Kannada PPTX records a warning because `Noto Sans Kannada` is referenced but not embedded.
 

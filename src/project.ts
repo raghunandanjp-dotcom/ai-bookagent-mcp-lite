@@ -34,6 +34,12 @@ export interface ExportRecord {
   warnings?: string[];
 }
 
+export interface ExportFailure {
+  format: "docx" | "pptx" | "pdf";
+  code: string;
+  message: string;
+}
+
 export interface CanvaState {
   status: "not_checked" | "setup_required" | "ready_for_consent" | "consented" | "complete" | "failed";
   consentedAt?: string;
@@ -54,6 +60,7 @@ export interface BookProject {
   contentGeneration: { iterationsUsed: number; currentAttempt: 0 | 1 | 2 };
   content?: BookContent;
   exports: ExportRecord[];
+  exportFailures: ExportFailure[];
   canva: CanvaState;
 }
 
@@ -81,6 +88,7 @@ export function createProject(input: unknown): BookProject {
     },
     contentGeneration: { iterationsUsed: 0, currentAttempt: 0 },
     exports: [],
+    exportFailures: [],
     canva: { status: "not_checked" }
   };
 }
@@ -95,7 +103,8 @@ export function parseProject(input: unknown): BookProject {
     ...(candidate as unknown as BookProject),
     request: bookRequestSchema.parse(candidate.request),
     selection: selectionStateSchema.parse(candidate.selection),
-    content: candidate.content ? bookContentSchema.parse(candidate.content) : undefined
+    content: candidate.content ? bookContentSchema.parse(candidate.content) : undefined,
+    exportFailures: Array.isArray(candidate.exportFailures) ? candidate.exportFailures as ExportFailure[] : []
   };
 }
 
