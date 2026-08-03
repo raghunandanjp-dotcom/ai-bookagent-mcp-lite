@@ -371,9 +371,9 @@ export async function exportSelectedFormats(
   content: BookContent,
   exportDir: string,
   formats: Array<"docx" | "pptx" | "pdf">,
-  context: Pick<BookRequest, "ageBand" | "language"> = { ageBand: content.effectiveAgeBand, language: content.language }
+  context: Pick<BookRequest, "ageBand" | "language"> & { ensureDocx?: boolean } = { ageBand: content.effectiveAgeBand, language: content.language }
 ): Promise<{ records: ExportRecord[]; failures: ExportFailure[] }> {
-  const unique = Array.from(new Set(["docx" as const, ...formats]));
+  const unique = Array.from(new Set(context.ensureDocx === false ? formats : ["docx" as const, ...formats]));
   const records: ExportRecord[] = [];
   const failures: ExportFailure[] = [];
   for (const format of unique) {

@@ -19,7 +19,11 @@ export type ProjectStage =
   | "content_review_required"
   | "language_review_required"
   | "documents_ready"
+  | "primary_output_ready"
+  | "primary_output_accepted"
+  | "secondary_outputs_ready"
   | "canva_setup_required"
+  | "canva_design_selection_required"
   | "canva_consent_required"
   | "canva_complete"
   | "partially_complete"
@@ -31,7 +35,25 @@ export interface ExportRecord {
   sha256: string;
   bytes: number;
   createdAt: string;
+  sourceRevision?: number;
   warnings?: string[];
+}
+
+export interface PrimaryOutputAcceptance {
+  status: "not_ready" | "ready_for_review" | "accepted";
+  sourceRevision?: number;
+  sha256?: string;
+  relativePath?: string;
+  acceptedAt?: string;
+  note?: string;
+}
+
+export interface CanvaDesignSelection {
+  designId: string;
+  title: string;
+  templateUrl?: string;
+  selectedAt: string;
+  sourceRevision: number;
 }
 
 export interface ExportFailure {
@@ -41,17 +63,21 @@ export interface ExportFailure {
 }
 
 export interface CanvaState {
-  status: "not_checked" | "setup_required" | "ready_for_consent" | "consented" | "complete" | "failed";
+  status: "not_checked" | "setup_required" | "design_selection_required" | "ready_for_consent" | "consented" | "complete" | "failed";
   consentedAt?: string;
   designId?: string;
   editUrl?: string;
   error?: string;
+  selection?: CanvaDesignSelection;
+  sourceRevision?: number;
 }
 
 export interface BookProject {
   schemaVersion: typeof PROJECT_SCHEMA_VERSION;
   projectId: string;
   revision: number;
+  sourceRevision: number;
+  reworksUsed: number;
   createdAt: string;
   updatedAt: string;
   stage: ProjectStage;
@@ -60,6 +86,7 @@ export interface BookProject {
   contentGeneration: { iterationsUsed: number; currentAttempt: 0 | 1 | 2 };
   content?: BookContent;
   exports: ExportRecord[];
+  primaryOutput: PrimaryOutputAcceptance;
   exportFailures: ExportFailure[];
   canva: CanvaState;
 }
@@ -75,6 +102,8 @@ export function createProject(input: unknown): BookProject {
     schemaVersion: PROJECT_SCHEMA_VERSION,
     projectId: randomUUID(),
     revision: 1,
+    sourceRevision: 1,
+    reworksUsed: 0,
     createdAt: timestamp,
     updatedAt: timestamp,
     stage: "draft",
@@ -88,6 +117,7 @@ export function createProject(input: unknown): BookProject {
     },
     contentGeneration: { iterationsUsed: 0, currentAttempt: 0 },
     exports: [],
+    primaryOutput: { status: "not_ready" },
     exportFailures: [],
     canva: { status: "not_checked" }
   };
@@ -99,13 +129,22 @@ export function parseProject(input: unknown): BookProject {
   if (candidate.schemaVersion !== PROJECT_SCHEMA_VERSION) {
     throw new Error(`Unsupported project schema version: ${String(candidate.schemaVersion)}.`);
   }
-  return {
+  const project = {
     ...(candidate as unknown as BookProject),
+    sourceRevision: typeof candidate.sourceRevision === "number" ? candidate.sourceRevision : 1,
+    reworksUsed: typeof candidate.reworksUsed === "number" ? candidate.reworksUsed : 0,
+    primaryOutput: (candidate.primaryOutput as PrimaryOutputAcceptance | undefined) ?? { status: "not_ready" },
+    contentGeneration: (candidate.contentGeneration as BookProject["contentGeneration"] | undefined) ?? { iterationsUsed: 0, currentAttempt: 0 },
     request: bookRequestSchema.parse(candidate.request),
     selection: selectionStateSchema.parse(candidate.selection),
     content: candidate.content ? bookContentSchema.parse(candidate.content) : undefined,
     exportFailures: Array.isArray(candidate.exportFailures) ? candidate.exportFailures as ExportFailure[] : []
   };
+  project.exports = project.exports.map((record) => ({
+    ...record,
+    sourceRevision: record.sourceRevision ?? project.sourceRevision
+  }));
+  return project;
 }
 
 export async function saveProject(projectDir: string, project: BookProject): Promise<BookProject> {

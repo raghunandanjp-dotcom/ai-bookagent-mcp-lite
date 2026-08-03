@@ -5,9 +5,10 @@
 1. Offline-first deterministic core.
 2. Host-assisted model generation.
 3. DOCX-first delivery.
-4. Optional exports before external handoffs.
-5. Explicit consent before Canva.
-6. Portable, resumable, versioned project packages.
+4. DOCX-first review and explicit acceptance.
+5. Optional PPTX/PDF only after current DOCX acceptance.
+6. Design selection and explicit consent before Canva.
+7. Portable, resumable, versioned project packages.
 
 ## Components
 
@@ -31,7 +32,9 @@ OAuth credentials are never handled or stored by this project.
 
 ## Project state
 
-The manifest stores the project ID, revision, request, creature-selection history, cumulative exclusions, content, export checksums, and Canva status. Reopening a project does not reset its regeneration count.
+The manifest stores both a bookkeeping `revision` and canonical `sourceRevision`, plus the project request, selection history, content, output checksums, DOCX acceptance, rework count, and Canva state. Exports retain the source revision that produced them, so older artifacts can be reported as stale instead of silently treated as current.
+
+The DOCX primary output is reviewed before secondary work begins. Up to two reworks may replace the canonical content and regenerate DOCX. The first warns that one rework remains; the second warns that none remain. Every rework increments `sourceRevision`, clears primary acceptance, and invalidates Canva state. PPTX and PDF are independent optional outputs. Canva is available only for an accepted DOCX at the current source revision and requires an explicit design selection before consent.
 
 DOCX is the blocking local artifact. Its logical page sequence is one cover, three explicit pages per creature (poem, fun fact, activity), and an optional closing page. Validation, delivery summaries, and the exporter share this page-count contract. The exporter writes a temporary package before publishing the final filename, preserves source order and poem stanza/line boundaries, and records a digest only after publication.
 

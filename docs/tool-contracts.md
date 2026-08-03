@@ -26,7 +26,17 @@ Validates schema, approved-creature coverage, duplicates, unexpected creatures, 
 
 ## `create_document_exports`
 
-DOCX is always generated first and is mandatory even when callers request only optional formats. A blocking content-validation error prevents document generation.
+Creates DOCX by default. The primary DOCX is mandatory and must be accepted before PPTX or PDF can be created independently for the same source revision. All file locations remain inside the book-project directory. The underlying batch exporter still guarantees DOCX-first generation by default; the workflow disables that implicit regeneration only after the checksum-bound primary DOCX has already been accepted.
+
+## `accept_primary_output`
+
+Accepts the reviewed current DOCX and unlocks PPTX, PDF, and Canva. Acceptance binds the source revision and DOCX checksum.
+
+## `rework_primary_output`
+
+Accepts validated replacement content and regenerates DOCX. A project permits at most two reworks. It returns the remaining count and the required warning.
+
+A blocking content-validation error prevents document generation.
 
 The DOCX logical page count is:
 
@@ -50,7 +60,11 @@ Records host-reported connector availability. When unavailable, returns guided i
 
 ## `confirm_canva_handoff`
 
-Records explicit user consent. No handoff is available without consent.
+Records explicit user consent after a design is selected. No handoff is available without consent for the current source revision.
+
+## `select_canva_design`
+
+Records the user's design ID, title, optional template URL, and current source revision. Changing the selection requires fresh consent.
 
 ## `prepare_canva_handoff`
 
@@ -62,7 +76,7 @@ Records a real design ID and validates that the edit URL belongs to Canva.
 
 ## `get_delivery_summary`
 
-Returns creatures covered, page count, review status, local artifacts, and Canva state.
+Returns creatures covered, page count, review status, rework usage, accepted primary output, current local artifacts, stale artifacts, Canva state, and valid `nextActions`. The final delivery contains only formats genuinely created for the current source revision.
 
 Review state is independent from workflow stage:
 

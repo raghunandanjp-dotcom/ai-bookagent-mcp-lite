@@ -101,6 +101,16 @@ describe("delivery summary review status", () => {
     expect(summary.review.content.issues).toEqual([]);
   });
 
+  it("reports the valid choices after a DOCX is ready for review", () => {
+    const project = {
+      ...projectWithContent("en", "source_supported"),
+      stage: "primary_output_ready" as const,
+      primaryOutput: { status: "ready_for_review" as const, sourceRevision: 1, sha256: "a".repeat(64) }
+    };
+    const summary = deliverySummary(project);
+    expect(summary.nextActions).toEqual(["rework_primary_output", "accept_primary_output"]);
+  });
+
   it("preserves factual warnings after documents are ready", () => {
     const project = {
       ...projectWithContent("en", "needs_review"),

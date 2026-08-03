@@ -29,7 +29,7 @@ export function checkCanvaReadiness(capability: unknown): CanvaState & { setupIn
       ]
     };
   }
-  return { status: "ready_for_consent" };
+  return { status: "design_selection_required" };
 }
 
 export function recordCanvaConsent(consent: boolean): CanvaState {
@@ -39,9 +39,14 @@ export function recordCanvaConsent(consent: boolean): CanvaState {
 
 export function prepareCanvaHandoff(request: BookRequest, content: BookContent, canva: CanvaState) {
   if (canva.status !== "consented") throw new Error("Explicit Canva consent is required before preparing the handoff.");
+  if (!canva.selection || canva.selection.sourceRevision !== canva.sourceRevision) {
+    throw new Error("A Canva design must be selected for the current source revision.");
+  }
   const slideCount = 1 + content.creatures.length * 3;
   return {
     handoffVersion: "1.0",
+    sourceRevision: canva.sourceRevision,
+    selectedDesign: canva.selection,
     designType: "presentation",
     title: content.title,
     dimensions: "16:9",
