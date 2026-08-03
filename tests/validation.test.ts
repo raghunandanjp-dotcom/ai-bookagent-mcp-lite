@@ -76,4 +76,43 @@ describe("content validation", () => {
     expect(result.report.valid).toBe(false);
     expect(result.report.issues).toContainEqual(expect.objectContaining({ code: "docx_page_overflow_risk", path: "creatures.0.funFact.text" }));
   });
+
+  it("validates each generated Kannada reader-facing field while allowing English production metadata", () => {
+    const knSection = (text: string) => ({ text, language: "kn" as const, reviewStatus: "needs_review" as const });
+    const input = {
+      schemaVersion: "1.1", selectedAgeBand: "3-5", effectiveAgeBand: "3-5", generationAttempt: 0,
+      title: "ಸಮುದ್ರದ ಸ್ನೇಹಿತರು", language: "kn",
+      creatures: [{
+        creatureId: "octopus", displayName: "ಆಕ್ಟೋಪಸ್",
+        poem: { ...knSection("ಅಲೆಗಳ ಜೊತೆ ಆಡುತಿದೆ\nಎಂಟು ಕೈಗಳು ಕುಣಿಯುತಿವೆ\n\nನೀಲಿಯ ನೀರಲಿ ಈಜುತ್ತದೆ\nಪುಟ್ಟ ಸ್ನೇಹಿತ ನಗುತ್ತದೆ"), title: "ಅಲೆಗಳ ಆಟ", structureVersion: "1.0", rhymeScheme: "AA" },
+        funFact: knSection("ಆಕ್ಟೋಪಸ್‌ಗೆ ಮೂರು ಹೃದಯಗಳಿವೆ."),
+        activity: knSection("ಎಂಟು ಕೈಗಳ ಚಿತ್ರ ಬಿಡಿಸಿ ಎಣಿಸಿ."),
+        illustrationBrief: "A friendly octopus under the sea.",
+        altText: "A smiling octopus with eight arms."
+      }]
+    };
+    const result = validateBookContent(input, approved, { title: "Create a sea-creature book", theme: "ocean", ageBand: "3-5", language: "kn", creatureCount: 1, brief: "Make it playful", allowMythical: false, outputFormats: ["docx"] });
+    expect(result.report.valid).toBe(true);
+    expect(result.report.issues).not.toEqual(expect.arrayContaining([expect.objectContaining({ code: "kannada_script_missing" })]));
+  });
+
+  it("reports missing and mixed Kannada script at the exact generated field", () => {
+    const knSection = (text: string) => ({ text, language: "kn" as const, reviewStatus: "needs_review" as const });
+    const input = {
+      schemaVersion: "1.1", selectedAgeBand: "3-5", effectiveAgeBand: "3-5", generationAttempt: 0,
+      title: "Ocean ಸ್ನೇಹಿತರು", language: "kn",
+      creatures: [{
+        creatureId: "octopus", displayName: "Octopus",
+        poem: { ...knSection("ಅಲೆಗಳ ಜೊತೆ ಆಡುತಿದೆ\nಎಂಟು ಕೈಗಳು ಕುಣಿಯುತಿವೆ\n\nನೀಲಿಯ ನೀರಲಿ ಈಜುತ್ತದೆ\nಪುಟ್ಟ ಸ್ನೇಹಿತ ನಗುತ್ತದೆ"), title: "ಅಲೆಗಳ ಆಟ", structureVersion: "1.0", rhymeScheme: "AA" },
+        funFact: knSection("It has three hearts."), activity: knSection("ಎಂಟು ಕೈಗಳ ಚಿತ್ರ ಬಿಡಿಸಿ."),
+        illustrationBrief: "English production metadata is allowed.", altText: "English accessibility metadata is allowed."
+      }]
+    };
+    const result = validateBookContent(input, approved);
+    expect(result.report.issues).toEqual(expect.arrayContaining([
+      expect.objectContaining({ code: "mixed_script_content", path: "title" }),
+      expect.objectContaining({ code: "kannada_script_missing", path: "creatures.0.displayName" }),
+      expect.objectContaining({ code: "kannada_script_missing", path: "creatures.0.funFact.text" })
+    ]));
+  });
 });

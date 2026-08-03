@@ -36,7 +36,7 @@ export function pptxFixture(count: number, language: "en" | "kn" = "en"): { cont
       illustrationBrief: `A friendly view of creature ${index + 1} in its habitat.`,
       altText: `Creature ${index + 1} shown clearly in its habitat.`
     })),
-    closingNote: "Keep learning about every wonderful creature."
+    closingNote: language === "kn" ? "ಪ್ರತಿ ಅದ್ಭುತ ಪ್ರಾಣಿಯ ಬಗ್ಗೆ ಕಲಿಯುತ್ತಿರಿ." : "Keep learning about every wonderful creature."
   };
   return { content, approved };
 }

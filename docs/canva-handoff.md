@@ -46,3 +46,16 @@ A declined handoff remains a completed local delivery and can be restarted with 
 Success URLs must use HTTPS on a Canva-owned hostname, contain no credentials, use a Canva `/design/{id}` edit path, and contain the same design ID as the result. This is structural validation; actual existence and account access can only be established by the authorized connector or by opening the URL.
 
 Changing canonical content or reworking DOCX invalidates the design selection and consent. Canva is never treated as the source of truth for book text. Connector limitations may prevent listing or updating designs; the host must disclose those limitations and provide the design identifier and title selected by the user.
+
+## Kannada transition
+
+The user may supply the original brief in English. Kannada begins only when `language: "kn"` is selected, and only validated reader-facing Kannada is handed to Canva. The neutral payload then includes:
+
+- locale `kn-IN`;
+- Kannada section titles;
+- preferred font `Noto Sans Kannada`;
+- a requirement for complete Kannada glyph coverage and editable text;
+- a prohibition on transliteration, text replacement, and rasterization;
+- experimental-language and rendered-glyph review requirements.
+
+Canva font availability is an adapter/runtime capability, not something the local project can prove during readiness checks. The host adapter must select an editable Kannada-capable font or return a structured non-retryable failure. Successfully recording the genuine edit URL means the design was created; it does not mean Kannada linguistic or rendered QA has passed. The user receives the link to continue editing, with fluent language review and in-Canva glyph, wrapping, and clipping review still required before publication.

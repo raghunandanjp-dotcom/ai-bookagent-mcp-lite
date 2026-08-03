@@ -2,7 +2,7 @@
 
 ## `create_book_project`
 
-Creates the manifest from a theme, title, age band, language, creature count, brief, and requested export formats. DOCX is inserted even when omitted.
+Creates the manifest from a theme, title, age band, language, creature count, brief, and requested export formats. Interactive creation requires explicit age and language choices after the initial natural-language prompt. Kannada is presented as experimental and requiring fluent human review and discretion; the user's prompt may remain in English. DOCX is inserted even when omitted.
 
 ## `set_creature_selection`
 
@@ -22,7 +22,7 @@ Produces at most two further prompt packages without another user choice. Iterat
 
 ## `validate_book_content`
 
-Validates schema, approved-creature coverage, duplicates, unexpected creatures, poem title/age/stanza/line/rhyme declarations, adjacent stanza repetition, requested and section language, age-band DOCX and PPTX overflow limits, projected pages, total words, and review flags. Presentation overflow is blocking rather than silently shrunk or paginated.
+Validates schema, approved-creature coverage, duplicates, unexpected creatures, poem title/age/stanza/line/rhyme declarations, adjacent stanza repetition, requested and section language, each generated Kannada reader-facing field, mixed script, age-band DOCX and PPTX overflow limits, projected pages, total words, and review flags. User prompts, illustration briefs, and alt text may remain in English. Presentation overflow is blocking rather than silently shrunk or paginated.
 
 ## `create_document_exports`
 
@@ -68,7 +68,7 @@ Records the user's design ID, title, optional template URL, and current source r
 
 ## `prepare_canva_handoff`
 
-Returns the reviewed page plan in a versioned, adapter-neutral `create_editable_design` envelope with project/revision correlation. It does not call Canva itself. Retryable connector failures may resume with the same consent while the selected design and source revision remain unchanged.
+Returns the reviewed page plan in a versioned, adapter-neutral `create_editable_design` envelope with project/revision correlation. It does not call Canva itself. Kannada payloads include `kn-IN`, localized section titles, editable-font and glyph-coverage requirements, and explicit human language/rendered review flags. Adapters must fail explicitly if they cannot preserve editable Kannada text. Retryable connector failures may resume with the same consent while the selected design and source revision remain unchanged.
 
 ## `record_canva_result`
 

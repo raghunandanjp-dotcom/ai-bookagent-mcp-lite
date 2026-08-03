@@ -84,6 +84,31 @@ describe("Canva readiness and handoff contract", () => {
     expect(() => prepareCanvaHandoff("project-1", 10, request, content, retryState)).not.toThrow();
   });
 
+  it("preserves Kannada as editable text with localized titles and explicit font/review requirements", () => {
+    const kannadaRequest = { ...request, language: "kn" as const };
+    const kannadaContent = structuredClone(content) as BookContent;
+    kannadaContent.language = "kn";
+    kannadaContent.title = "ಸಮುದ್ರದ ಸ್ನೇಹಿತರು";
+    kannadaContent.creatures[0]!.displayName = "ಆಕ್ಟೋಪಸ್";
+    kannadaContent.creatures[0]!.poem.title = "ಅಲೆಗಳ ಆಟ";
+    kannadaContent.creatures[0]!.poem.text = "ಅಲೆಗಳ ಜೊತೆ ಆಡುತಿದೆ\nಎಂಟು ಕೈಗಳು ಕುಣಿಯುತಿವೆ";
+    kannadaContent.creatures[0]!.funFact.text = "ಆಕ್ಟೋಪಸ್‌ಗೆ ಮೂರು ಹೃದಯಗಳಿವೆ.";
+    kannadaContent.creatures[0]!.activity.text = "ಎಂಟು ಕೈಗಳ ಚಿತ್ರ ಬಿಡಿಸಿ.";
+    for (const section of [kannadaContent.creatures[0]!.poem, kannadaContent.creatures[0]!.funFact, kannadaContent.creatures[0]!.activity]) section.language = "kn";
+
+    const payload = prepareCanvaHandoff("project-1", 9, kannadaRequest, kannadaContent, consented);
+    expect(payload).toMatchObject({
+      language: "kn",
+      locale: "kn-IN",
+      typography: { script: "Kannada", preferredFont: "Noto Sans Kannada", requireKannadaGlyphCoverage: true, preserveEditableText: true },
+      review: { experimental: true, humanLanguageReviewRequired: true, renderedGlyphReviewRequired: true }
+    });
+    expect(payload.pages[1]).toMatchObject({ title: "ಆಕ್ಟೋಪಸ್ — ಕವಿತೆ", body: kannadaContent.creatures[0]!.poem.text });
+    expect(payload.pages[2]).toMatchObject({ title: "ಆಕ್ಟೋಪಸ್ — ಆಸಕ್ತಿದಾಯಕ ಸಂಗತಿ" });
+    expect(payload.pages[3]).toMatchObject({ title: "ಆಕ್ಟೋಪಸ್ — ಚಟುವಟಿಕೆ" });
+    expect(payload.instruction).toContain("never transliterate, replace, or rasterize");
+  });
+
   it("rejects handoff without consent", () => {
     expect(() => prepareCanvaHandoff("project-1", 9, request, content, { ...consented, status: "declined" })).toThrow(/consent/i);
   });

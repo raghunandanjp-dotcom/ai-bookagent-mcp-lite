@@ -12,6 +12,7 @@ import {
   type ValidationReport
 } from "./domain.ts";
 import { analyzePoem, poemStructure } from "./poems.ts";
+import { analyzeKannadaScript } from "./language.ts";
 
 function words(value: string): number {
   return value.trim().split(/\s+/u).filter(Boolean).length;
@@ -144,17 +145,26 @@ export function validateBookContent(
         message: `${creature.displayName}'s fun fact requires review.`
       });
     }
-    if (content.language === "kn") {
-      const hasKannada = /[\u0C80-\u0CFF]/u.test(
-        `${creature.poem.text}${creature.funFact.text}${creature.activity.text}`
-      );
-      if (!hasKannada) {
-        issues.push({
-          level: "error",
-          code: "kannada_script_missing",
-          path: `creatures.${index}`,
-          message: `${creature.displayName} does not contain Kannada-script content.`
-        });
+  }
+
+  if (content.language === "kn") {
+    const readerFacingFields: Array<{ path: string; value: string }> = [
+      { path: "title", value: content.title },
+      ...content.creatures.flatMap((creature, index) => [
+        { path: `creatures.${index}.displayName`, value: creature.displayName },
+        { path: `creatures.${index}.poem.title`, value: creature.poem.title },
+        { path: `creatures.${index}.poem.text`, value: creature.poem.text },
+        { path: `creatures.${index}.funFact.text`, value: creature.funFact.text },
+        { path: `creatures.${index}.activity.text`, value: creature.activity.text }
+      ]),
+      ...(content.closingNote ? [{ path: "closingNote", value: content.closingNote }] : [])
+    ];
+    for (const field of readerFacingFields) {
+      const script = analyzeKannadaScript(field.value);
+      if (!script.hasKannada) {
+        issues.push({ level: "error", code: "kannada_script_missing", path: field.path, message: "Reader-facing Kannada content must contain Kannada script. The user's source prompt may remain in English." });
+      } else if (script.hasLatin) {
+        issues.push({ level: "error", code: "mixed_script_content", path: field.path, message: "Reader-facing Kannada content contains Latin letters. Keep scientific names and English production metadata outside reader-facing text." });
       }
     }
   }

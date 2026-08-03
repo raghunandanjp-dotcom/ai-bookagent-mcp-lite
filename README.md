@@ -32,9 +32,11 @@ PPTX output uses editable native text and shapes with a deterministic cover plus
 
 ## Workflow
 
+The initial request may be entirely in English, such as “Create a 10 sea-creature book.” Before project creation, the host asks for an age band and language. Selecting Kannada activates native Kannada generation automatically; the user is never required to type Kannada. Kannada is experimental, requires fluent human review, and should be used with discretion.
+
 ```text
 brief
-  -> choose age once
+  -> choose age and language
   -> creature list
   -> approve / manually edit / regenerate (at most twice)
   -> host-assisted Claude prompt batches
@@ -62,7 +64,7 @@ The MCP does not install Canva, perform OAuth, or call paid model APIs. Claude/C
 | 9–11 | 3 | 4 | AABB |
 | 12–14 | 4 | 3 | AAB |
 
-Every poem has a short title. Line and stanza breaks are preserved in every export. Immediate full-stanza repetition is rejected. English rhyme follows the declared scheme; experimental Kannada is authored as a native adaptation and requires human review. See [MVP poem structure](docs/poem-structure.md).
+Every poem has a short title. Line and stanza breaks are preserved in every export. Immediate full-stanza repetition is rejected. English rhyme follows the declared scheme. When Kannada is selected, the English prompt is treated only as source material and all reader-facing content is authored natively in Kannada rather than transliterated or translated line by line. Experimental Kannada requires fluent human review. See [MVP poem structure](docs/poem-structure.md).
 
 DOCX typography follows the effective authoring age. Poem/body sizes are 22/20 pt for ages 3–5, 20/18 pt for 6–8, 18/16 pt for 9–11, and 16/14 pt for 12–14. The exporter never silently truncates or shrinks content below these sizes; validation blocks content that exceeds its age-specific page budget.
 
@@ -142,6 +144,8 @@ The current DOCX must be explicitly accepted before any secondary output. A rewo
 7. Validate a successful HTTPS Canva design URL and require its path ID to match the returned design ID.
 
 The project never invents an edit link. Connector-specific tool names and arguments stay in the host adapter; the persisted handoff and result contracts remain neutral.
+
+For Kannada, the Canva payload uses locale `kn-IN`, localized section titles, and requests editable `Noto Sans Kannada` text with complete Kannada glyph coverage. The adapter must not transliterate, replace, or rasterize Kannada text. If it cannot preserve Kannada with an editable supported font, it must report a structured failure instead of claiming completion. A returned Canva link still requires fluent language review and rendered-glyph review in Canva before publication.
 
 ## Security and publishing
 

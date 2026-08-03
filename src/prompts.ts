@@ -33,7 +33,7 @@ export function prepareAuthoringPrompts(
   const structure = poemStructure(authoringAge);
   const languageInstruction =
     request.language === "kn"
-      ? "Write natively in Kannada script. Do not transliterate. Mark every section needs_review because Kannada requires human language review."
+      ? "The user's title, theme, and source brief may be written in English; treat them only as source material. Produce every reader-facing field (book title, creature display name, poem title and text, fun fact, activity, and closing note) natively in Kannada script. Do not transliterate or translate line by line. Keep illustrationBrief and altText in English as production metadata. Mark every content section needs_review because Kannada is experimental and requires fluent human language review."
       : "Write in English.";
   const expectedOutput = `Return only JSON with schemaVersion "1.1", title, language, selectedAgeBand "${request.ageBand}", effectiveAgeBand "${authoringAge}", generationAttempt ${generationAttempt}, creatures, and optional closingNote. Each creature must contain creatureId, displayName, poem, funFact, activity, illustrationBrief, and altText. Poem contains title, text, language, reviewStatus, structureVersion "1.0", and rhymeScheme. Other content sections contain text, language, and reviewStatus.`;
 

@@ -2,7 +2,7 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
-import { bookRequestSchema, creatureSchema } from "./domain.ts";
+import { creatureSchema, interactiveBookRequestSchema } from "./domain.ts";
 import {
   acceptBookContent,
   acceptPrimaryOutput,
@@ -35,10 +35,10 @@ const text = (value: unknown) => ({
 server.registerTool(
   "create_book_project",
   {
-    description: "Create a portable creature poetry-book project. DOCX is always mandatory.",
+    description: "Create a portable creature poetry-book project after explicitly asking the user for age band and language. Kannada is experimental and requires fluent human review and discretion. DOCX is always mandatory.",
     inputSchema: {
       projectDir: z.string().min(1).describe("A host-selected project directory."),
-      request: bookRequestSchema
+      request: interactiveBookRequestSchema
     }
   },
   async ({ projectDir, request }) => text(await initializeProject(projectDir, request))
