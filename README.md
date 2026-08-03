@@ -12,6 +12,8 @@ Each approved creature receives:
 
 The mandatory artifact is DOCX. PPTX and PDF are optional and are generated before the optional Canva phase.
 
+The DOCX page sequence is deterministic: one cover, then one poem page, one fun-fact page, and one activity page for every approved creature. A non-empty closing note adds one final page. The projected page count is therefore `1 + (3 × creatures) + optional closing page`.
+
 ### Boundaries
 
 - Default: 5 creatures
@@ -58,6 +60,8 @@ The MCP does not install Canva, perform OAuth, or call paid model APIs. Claude/C
 
 Every poem has a short title. Line and stanza breaks are preserved in every export. Immediate full-stanza repetition is rejected. English rhyme follows the declared scheme; experimental Kannada is authored as a native adaptation and requires human review. See [MVP poem structure](docs/poem-structure.md).
 
+DOCX typography follows the effective authoring age. Poem/body sizes are 22/20 pt for ages 3–5, 20/18 pt for 6–8, 18/16 pt for 9–11, and 16/14 pt for 12–14. The exporter never silently truncates or shrinks content below these sizes; validation blocks content that exceeds its age-specific page budget.
+
 These rules are the upstream content contract for DOCX, PPTX, PDF, and Canva work. Exporter-specific tasks may change layout and rendering, but should not redefine poem structure or the age-iteration sequence.
 
 ## Requirements
@@ -97,6 +101,8 @@ Kannada DOCX/PPTX uses the `Noto Sans Kannada` font family. Kannada PDF export
 also requires `BOOK_AGENT_KANNADA_FONT_PATH` in the user's uncommitted `.env`
 file so the font can be embedded. The exporter fails clearly instead of
 producing a PDF with missing glyphs.
+
+DOCX generation itself remains local and requires no Office installation, cloud conversion, Canva access, or paid API. Optional visual QA uses local LibreOffice and Poppler. Kannada DOCX release QA requires `Noto Sans Kannada` to be installed and remains subject to human language and rendered-glyph review under issue #1.
 
 ## CLI
 

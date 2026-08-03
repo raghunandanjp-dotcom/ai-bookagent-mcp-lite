@@ -55,4 +55,25 @@ describe("content validation", () => {
     expect(result.report.missingCreatureIds).toEqual(["octopus"]);
     expect(result.report.unexpectedCreatureIds).toEqual(["dolphin"]);
   });
+
+  it("counts an optional closing page", () => {
+    const input = {
+      schemaVersion: "1.1", selectedAgeBand: "3-5", effectiveAgeBand: "3-5", generationAttempt: 0,
+      title: "Ocean Friends", language: "en", closingNote: "Keep exploring!",
+      creatures: [{ creatureId: "octopus", displayName: "Octopus", poem: poem(), funFact: section("Three hearts."), activity: section("Count eight arms."), illustrationBrief: "A friendly octopus.", altText: "An octopus." }]
+    };
+    expect(validateBookContent(input, approved).report.pageCount).toBe(5);
+  });
+
+  it("blocks DOCX content that exceeds the age-specific page budget", () => {
+    const longText = Array.from({ length: 71 }, () => "word").join(" ");
+    const input = {
+      schemaVersion: "1.1", selectedAgeBand: "3-5", effectiveAgeBand: "3-5", generationAttempt: 0,
+      title: "Ocean Friends", language: "en",
+      creatures: [{ creatureId: "octopus", displayName: "Octopus", poem: poem(), funFact: section(longText), activity: section("Count eight arms."), illustrationBrief: "A friendly octopus.", altText: "An octopus." }]
+    };
+    const result = validateBookContent(input, approved);
+    expect(result.report.valid).toBe(false);
+    expect(result.report.issues).toContainEqual(expect.objectContaining({ code: "docx_page_overflow_risk", path: "creatures.0.funFact.text" }));
+  });
 });

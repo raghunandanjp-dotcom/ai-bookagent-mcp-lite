@@ -4,6 +4,7 @@ import { z } from "zod";
 import {
   bookContentSchema,
   creatureSchema,
+  projectedPageCount,
   type BookContent
 } from "./domain.ts";
 import { checkCanvaReadiness, prepareCanvaHandoff, recordCanvaConsent, recordCanvaResult } from "./canva.ts";
@@ -193,7 +194,7 @@ export function deliverySummary(project: BookProject) {
     stage: project.stage,
     creaturesCovered: project.content?.creatures.map((creature) => creature.displayName) ?? [],
     sectionsPerCreature: ["poem", "fun fact", "activity"],
-    pageCount: project.content ? 1 + project.content.creatures.length * 3 : 0,
+    pageCount: project.content ? projectedPageCount(project.content) : 0,
     language: project.request.language,
     selectedAgeBand: project.request.ageBand,
     effectiveAgeBand: project.content?.effectiveAgeBand ?? project.request.ageBand,

@@ -112,4 +112,10 @@ describe("delivery summary review status", () => {
     expect(summary.review.content.status).toBe("required");
     expect(summary.review.content.outstandingCount).toBe(1);
   });
+
+  it("includes the optional closing page in delivery totals", () => {
+    const project = projectWithContent("en", "source_supported");
+    project.content = { ...project.content!, closingNote: "Keep exploring!" };
+    expect(deliverySummary(project).pageCount).toBe(5);
+  });
 });

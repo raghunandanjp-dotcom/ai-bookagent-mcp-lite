@@ -1,19 +1,23 @@
 import { createWriteStream } from "node:fs";
-import { mkdir, writeFile } from "node:fs/promises";
+import { mkdir, rename, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import {
   AlignmentType,
+  BorderStyle,
   Document,
   Footer,
   HeadingLevel,
-  PageBreak,
   PageNumber,
   Packer,
   Paragraph,
-  TextRun
+  ShadingType,
+  TextRun,
+  type IRunOptions
 } from "docx";
+import { randomUUID } from "node:crypto";
+import JSZip from "jszip";
 import { createRequire } from "node:module";
-import type { BookContent } from "./domain.ts";
+import { DOCX_TYPOGRAPHY_BY_AGE, type BookContent } from "./domain.ts";
 import { fileDigest, safeOutputName, type ExportRecord } from "./project.ts";
 import { normalizePoemText } from "./poems.ts";
 
@@ -31,8 +35,73 @@ function documentFont(language: BookContent["language"]): string {
   return language === "kn" ? "Noto Sans Kannada" : "Arial";
 }
 
+function documentLanguage(language: BookContent["language"]): string {
+  return language === "kn" ? "kn-IN" : "en-US";
+}
+
 function sectionTitle(value: "poem" | "funFact" | "activity"): string {
   return value === "poem" ? "Poem" : value === "funFact" ? "Fun Fact" : "Activity";
+}
+
+function run(text: string, content: BookContent, options: Omit<IRunOptions, "text"> = {}): TextRun {
+  return new TextRun({ text, font: documentFont(content.language), ...options });
+}
+
+function pageHeading(content: BookContent, creatureName: string, section: string): Paragraph[] {
+  return [
+    new Paragraph({
+      pageBreakBefore: true,
+      heading: HeadingLevel.HEADING_1,
+      keepNext: true,
+      spacing: { after: 100 },
+      children: [run(creatureName, content, { bold: true, size: 48, color: COLORS.navy })]
+    }),
+    new Paragraph({
+      heading: HeadingLevel.HEADING_2,
+      keepNext: true,
+      spacing: { after: 180 },
+      children: [run(section, content, { bold: true, size: 36, color: section === "Fun Fact" ? COLORS.coral : COLORS.teal })]
+    })
+  ];
+}
+
+function illustrationPlaceholder(content: BookContent, brief: string, altText: string): Paragraph {
+  const border = { style: BorderStyle.SINGLE, size: 8, color: "9BC8D1", space: 8 };
+  return new Paragraph({
+    spacing: { before: 300, after: 120, line: 280 },
+    border: { top: border, right: border, bottom: border, left: border },
+    shading: { type: ShadingType.CLEAR, fill: "E9F3F5", color: "auto" },
+    children: [
+      run("Illustration placeholder", content, { bold: true, size: 24, color: COLORS.teal }),
+      run(`\nIllustration direction: ${brief}`, content, { size: 22, color: "42525C" }),
+      run(`\nAccessible description: ${altText}`, content, { size: 22, color: COLORS.ink })
+    ]
+  });
+}
+
+function poemParagraphs(content: BookContent, text: string): Paragraph[] {
+  const typography = DOCX_TYPOGRAPHY_BY_AGE[content.effectiveAgeBand];
+  return normalizePoemText(text).split("\n").map((line) => new Paragraph({
+    keepLines: true,
+    spacing: { after: line ? 0 : Math.round(typography.poemPoints * 10), line: Math.round(typography.poemPoints * typography.lineSpacing * 20) },
+    children: line ? [run(line, content, { size: typography.poemPoints * 2, color: COLORS.ink })] : []
+  }));
+}
+
+function bodyParagraph(content: BookContent, text: string): Paragraph {
+  const typography = DOCX_TYPOGRAPHY_BY_AGE[content.effectiveAgeBand];
+  return new Paragraph({
+    spacing: { after: 180, line: Math.round(typography.bodyPoints * typography.lineSpacing * 20) },
+    children: [run(text, content, { size: typography.bodyPoints * 2, color: COLORS.ink })]
+  });
+}
+
+function reviewNotice(content: BookContent, status: BookContent["creatures"][number]["poem"]["reviewStatus"]): Paragraph[] {
+  if (status !== "needs_review" && content.language !== "kn") return [];
+  const message = content.language === "kn"
+    ? "Review required: experimental Kannada language and rendering."
+    : "Review required before publication.";
+  return [new Paragraph({ spacing: { before: 160, after: 80 }, children: [run(message, content, { italics: true, size: 20, color: "5C6770" })] })];
 }
 
 function docxChildren(content: BookContent): Paragraph[] {
@@ -41,7 +110,7 @@ function docxChildren(content: BookContent): Paragraph[] {
     new Paragraph({
       alignment: AlignmentType.CENTER,
       spacing: { before: 1800, after: 360 },
-      children: [new TextRun({ text: content.title, bold: true, size: 52, color: COLORS.navy, font })]
+      children: [new TextRun({ text: content.title, bold: true, size: 56, color: COLORS.navy, font })]
     }),
     new Paragraph({
       alignment: AlignmentType.CENTER,
@@ -50,38 +119,34 @@ function docxChildren(content: BookContent): Paragraph[] {
     }),
     new Paragraph({
       alignment: AlignmentType.CENTER,
-      children: [new TextRun({ text: `${content.creatures.length} creatures`, size: 24, color: COLORS.ink, font })]
+      children: [new TextRun({ text: `Ages ${content.effectiveAgeBand} · ${content.language === "kn" ? "Kannada (experimental)" : "English"} · ${content.creatures.length} creatures`, size: 24, color: COLORS.ink, font })]
     })
   ];
 
-  for (const [index, creature] of content.creatures.entries()) {
-    children.push(new Paragraph({ children: [new PageBreak()] }));
+  for (const creature of content.creatures) {
+    children.push(...pageHeading(content, creature.displayName, "Poem"));
     children.push(new Paragraph({
-      heading: HeadingLevel.HEADING_1,
+      heading: HeadingLevel.HEADING_3,
       keepNext: true,
-      spacing: { after: 240 },
-      children: [new TextRun({ text: `${index + 1}. ${creature.displayName}`, bold: true, color: COLORS.navy, font })]
+      spacing: { after: 160 },
+      children: [run(creature.poem.title, content, { bold: true, size: 32, color: COLORS.ink })]
     }));
-    for (const key of ["poem", "funFact", "activity"] as const) {
-      children.push(new Paragraph({
-        heading: HeadingLevel.HEADING_2,
-        keepNext: true,
-        spacing: { before: 240, after: 100 },
-        children: [new TextRun({ text: sectionTitle(key), bold: true, color: key === "funFact" ? COLORS.coral : COLORS.teal, font })]
-      }));
-      if (key === "poem") children.push(new Paragraph({ keepNext: true, children: [new TextRun({ text: creature.poem.title, bold: true, size: 30, color: COLORS.ink, font })] }));
-      children.push(new Paragraph({
-        spacing: { after: 200, line: 340 },
-        children: [new TextRun({ text: key === "poem" ? normalizePoemText(creature.poem.text) : creature[key].text, size: 28, color: COLORS.ink, font })]
-      }));
-    }
-    children.push(new Paragraph({
-      spacing: { before: 240 },
-      children: [new TextRun({ text: `Illustration idea: ${creature.illustrationBrief}`, italics: true, size: 22, color: "5C6770", font })]
-    }));
+    children.push(...poemParagraphs(content, creature.poem.text));
+    children.push(...reviewNotice(content, creature.poem.reviewStatus));
+    children.push(illustrationPlaceholder(content, creature.illustrationBrief, creature.altText));
+
+    children.push(...pageHeading(content, creature.displayName, "Fun Fact"));
+    children.push(bodyParagraph(content, creature.funFact.text));
+    children.push(...reviewNotice(content, creature.funFact.reviewStatus));
+    children.push(illustrationPlaceholder(content, creature.illustrationBrief, creature.altText));
+
+    children.push(...pageHeading(content, creature.displayName, "Activity"));
+    children.push(bodyParagraph(content, creature.activity.text));
+    children.push(...reviewNotice(content, creature.activity.reviewStatus));
+    children.push(illustrationPlaceholder(content, creature.illustrationBrief, creature.altText));
   }
   if (content.closingNote) {
-    children.push(new Paragraph({ children: [new PageBreak()] }));
+    children.push(new Paragraph({ pageBreakBefore: true, heading: HeadingLevel.HEADING_1, alignment: AlignmentType.CENTER, children: [run("A final note", content, { bold: true, size: 48, color: COLORS.navy })] }));
     children.push(new Paragraph({ alignment: AlignmentType.CENTER, children: [new TextRun({ text: content.closingNote, size: 30, color: COLORS.navy, font })] }));
   }
   return children;
@@ -91,10 +156,19 @@ export async function exportDocx(content: BookContent, exportDir: string): Promi
   await mkdir(exportDir, { recursive: true });
   const filename = `${safeOutputName(content.title)}.docx`;
   const outputPath = path.join(exportDir, filename);
+  const temporaryPath = path.join(exportDir, `.${filename}.${randomUUID()}.tmp`);
+  const language = documentLanguage(content.language);
   const document = new Document({
     creator: "AI Book Agent MCP Lite",
     title: content.title,
-    description: "Children's creature poetry activity book",
+    subject: "Children's creature poetry activity book",
+    keywords: "children, poetry, creatures, activities",
+    description: `Children's creature poetry activity book for ages ${content.effectiveAgeBand}; ${language}; ${content.creatures.length} creatures`,
+    styles: {
+      default: {
+        document: { run: { font: documentFont(content.language), language: { value: language } } }
+      }
+    },
     sections: [{
       properties: {
         page: {
@@ -113,7 +187,21 @@ export async function exportDocx(content: BookContent, exportDir: string): Promi
       children: docxChildren(content)
     }]
   });
-  await writeFile(outputPath, await Packer.toBuffer(document));
+  try {
+    let buffer = await Packer.toBuffer(document);
+    const packageContents = await JSZip.loadAsync(buffer);
+    if (!packageContents.file("[Content_Types].xml") || !packageContents.file("word/document.xml") || !packageContents.file("docProps/core.xml")) {
+      throw new Error("Generated DOCX package is missing a required OOXML part.");
+    }
+    const coreProperties = await packageContents.file("docProps/core.xml")!.async("string");
+    packageContents.file("docProps/core.xml", coreProperties.replace("</cp:coreProperties>", `<dc:language>${language}</dc:language></cp:coreProperties>`));
+    buffer = await packageContents.generateAsync({ type: "nodebuffer", compression: "DEFLATE" });
+    await writeFile(temporaryPath, buffer, { flag: "wx" });
+    await rename(temporaryPath, outputPath);
+  } catch (error) {
+    await rm(temporaryPath, { force: true });
+    throw error;
+  }
   const digest = await fileDigest(outputPath);
   return { format: "docx", relativePath: filename, ...digest, createdAt: new Date().toISOString() };
 }
