@@ -27,6 +27,19 @@ export const POEM_STRUCTURE_BY_AGE = {
   "12-14": { stanzaCount: 4, linesPerStanza: 3, rhymeScheme: "AAB", minWords: 48, maxWords: 200 }
 } as const satisfies Record<AgeBand, object>;
 
+export const DOCX_TYPOGRAPHY_BY_AGE = {
+  "3-5": { bodyPoints: 20, poemPoints: 22, lineSpacing: 1.3, maxSectionWords: 70 },
+  "6-8": { bodyPoints: 18, poemPoints: 20, lineSpacing: 1.25, maxSectionWords: 100 },
+  "9-11": { bodyPoints: 16, poemPoints: 18, lineSpacing: 1.2, maxSectionWords: 140 },
+  "12-14": { bodyPoints: 14, poemPoints: 16, lineSpacing: 1.15, maxSectionWords: 180 }
+} as const satisfies Record<AgeBand, object>;
+
+export const DOCX_LIMITS = {
+  maxIllustrationBriefWords: 60,
+  maxAltTextWords: 40,
+  maxClosingNoteWords: 120
+} as const;
+
 export const nextAgeBand = (ageBand: AgeBand): AgeBand => ({
   "3-5": "6-8", "6-8": "9-11", "9-11": "12-14", "12-14": "12-14"
 })[ageBand] as AgeBand;
@@ -110,6 +123,10 @@ export type BookRequest = z.infer<typeof bookRequestSchema>;
 export type Creature = z.infer<typeof creatureSchema>;
 export type BookContent = z.infer<typeof bookContentSchema>;
 export type SelectionState = z.infer<typeof selectionStateSchema>;
+
+export function projectedPageCount(content: Pick<BookContent, "creatures" | "closingNote">): number {
+  return 1 + content.creatures.length * 3 + (content.closingNote?.trim() ? 1 : 0);
+}
 
 export interface ValidationIssue {
   level: "error" | "warning";

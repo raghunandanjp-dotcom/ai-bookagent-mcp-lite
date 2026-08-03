@@ -1,6 +1,9 @@
 import {
   LIMITS,
+  DOCX_LIMITS,
+  DOCX_TYPOGRAPHY_BY_AGE,
   bookContentSchema,
+  projectedPageCount,
   type BookContent,
   type BookRequest,
   type Creature,
@@ -92,6 +95,25 @@ export function validateBookContent(
         });
       }
     }
+    const docxLimit = DOCX_TYPOGRAPHY_BY_AGE[content.effectiveAgeBand].maxSectionWords;
+    for (const sectionName of ["funFact", "activity"] as const) {
+      if (words(creature[sectionName].text) > docxLimit) {
+        issues.push({
+          level: "error",
+          code: "docx_page_overflow_risk",
+          path: `creatures.${index}.${sectionName}.text`,
+          message: `${sectionName} exceeds the ${docxLimit}-word DOCX page budget for ages ${content.effectiveAgeBand}.`
+        });
+      }
+    }
+    for (const [field, limit] of [
+      ["illustrationBrief", DOCX_LIMITS.maxIllustrationBriefWords],
+      ["altText", DOCX_LIMITS.maxAltTextWords]
+    ] as const) {
+      if (words(creature[field]) > limit) {
+        issues.push({ level: "error", code: "docx_page_overflow_risk", path: `creatures.${index}.${field}`, message: `${field} exceeds the ${limit}-word DOCX page budget.` });
+      }
+    }
     if (creature.funFact.reviewStatus === "needs_review") {
       issues.push({
         level: "warning",
@@ -115,7 +137,10 @@ export function validateBookContent(
     }
   }
 
-  const pageCount = 1 + content.creatures.length * 3;
+  if (content.closingNote && words(content.closingNote) > DOCX_LIMITS.maxClosingNoteWords) {
+    issues.push({ level: "error", code: "docx_page_overflow_risk", path: "closingNote", message: `closingNote exceeds the ${DOCX_LIMITS.maxClosingNoteWords}-word DOCX page budget.` });
+  }
+  const pageCount = projectedPageCount(content);
   if (pageCount > LIMITS.maxPages) {
     issues.push({ level: "error", code: "page_limit", path: "creatures", message: `Projected page count ${pageCount} exceeds ${LIMITS.maxPages}.` });
   }

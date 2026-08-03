@@ -26,6 +26,20 @@ Validates schema, approved-creature coverage, duplicates, unexpected creatures, 
 
 ## `create_document_exports`
 
+DOCX is always generated first and is mandatory even when callers request only optional formats. A blocking content-validation error prevents document generation.
+
+The DOCX logical page count is:
+
+```text
+1 cover + (3 × approved creatures) + 1 when closingNote is non-empty
+```
+
+The three creature pages are always poem, fun fact, and activity in that order. Each begins at an explicit page boundary, includes a deterministic illustration placeholder with both the illustration brief and accessible description, and uses typography selected from `effectiveAgeBand`. DOCX-specific overflow-risk errors are blocking; content is never truncated or silently shrunk.
+
+DOCX fun-fact and activity budgets are 70 words for ages 3–5, 100 for 6–8, 140 for 9–11, and 180 for 12–14. Illustration briefs are limited to 60 words, accessible descriptions to 40 words, and closing notes to 120 words. These conservative preflight limits control overflow risk across compatible local renderers; a reference render remains the release gate when LibreOffice is available.
+
+DOCX generation uses only local libraries. LibreOffice and Poppler are optional reference-rendering dependencies and are not required to create an editable DOCX.
+
 Always creates DOCX. It may also create PPTX and PDF. All file locations remain inside the book-project directory.
 
 ## `check_canva_readiness`
