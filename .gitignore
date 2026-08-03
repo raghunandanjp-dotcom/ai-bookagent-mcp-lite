@@ -10,3 +10,4 @@ work/
 .DS_Store
 Thumbs.db
 *.local.json
+.pptx-qa/

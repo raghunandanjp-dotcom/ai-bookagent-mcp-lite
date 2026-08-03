@@ -22,7 +22,7 @@ Produces at most two further prompt packages without another user choice. Iterat
 
 ## `validate_book_content`
 
-Validates schema, approved-creature coverage, duplicates, unexpected creatures, poem title/age/stanza/line/rhyme declarations, adjacent stanza repetition, language script, section limits, projected pages, total words, and review flags.
+Validates schema, approved-creature coverage, duplicates, unexpected creatures, poem title/age/stanza/line/rhyme declarations, adjacent stanza repetition, requested and section language, age-band DOCX and PPTX overflow limits, projected pages, total words, and review flags. Presentation overflow is blocking rather than silently shrunk or paginated.
 
 ## `create_document_exports`
 
@@ -41,6 +41,8 @@ DOCX fun-fact and activity budgets are 70 words for ages 3–5, 100 for 6–8, 1
 DOCX generation uses only local libraries. LibreOffice and Poppler are optional reference-rendering dependencies and are not required to create an editable DOCX.
 
 Always creates DOCX. It may also create PPTX and PDF. All file locations remain inside the book-project directory.
+
+PPTX uses a deterministic cover plus poem, fun-fact, and activity slide per creature. It preserves editable text and placeholders. Kannada PPTX records a warning because `Noto Sans Kannada` is referenced but not embedded.
 
 ## `check_canva_readiness`
 

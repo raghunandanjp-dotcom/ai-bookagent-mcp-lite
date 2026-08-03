@@ -31,6 +31,7 @@ export interface ExportRecord {
   sha256: string;
   bytes: number;
   createdAt: string;
+  warnings?: string[];
 }
 
 export interface CanvaState {

@@ -2,6 +2,7 @@ import {
   LIMITS,
   DOCX_LIMITS,
   DOCX_TYPOGRAPHY_BY_AGE,
+  PPTX_AGE_PROFILES,
   bookContentSchema,
   projectedPageCount,
   type BookContent,
@@ -14,6 +15,14 @@ import { analyzePoem, poemStructure } from "./poems.ts";
 
 function words(value: string): number {
   return value.trim().split(/\s+/u).filter(Boolean).length;
+}
+
+function characters(value: string): number {
+  return Array.from(value).length;
+}
+
+function explicitLines(value: string): number {
+  return value.split(/\r?\n/u).length;
 }
 
 export function validateBookContent(
@@ -47,9 +56,13 @@ export function validateBookContent(
   }
 
   const content = parsed.data;
+  const pptxProfile = PPTX_AGE_PROFILES[content.effectiveAgeBand];
   const selectedAgeBand = request?.ageBand ?? content.selectedAgeBand;
   if (content.selectedAgeBand !== selectedAgeBand) {
     issues.push({ level: "error", code: "selected_age_mismatch", path: "selectedAgeBand", message: "Content selected age does not match the project." });
+  }
+  if (request && content.language !== request.language) {
+    issues.push({ level: "error", code: "book_language_mismatch", path: "language", message: `Content language ${content.language} does not match requested language ${request.language}.` });
   }
   if (expectedAttempt !== undefined && content.generationAttempt !== expectedAttempt) {
     issues.push({ level: "error", code: "generation_attempt_mismatch", path: "generationAttempt", message: "Content generation attempt does not match the active prompt." });
@@ -85,15 +98,24 @@ export function validateBookContent(
     if (creature.poem.language !== content.language) issues.push({ level: "error", code: "poem_language_mismatch", path: `${poemPath}.language`, message: "Poem language must match the book language." });
     for (const sectionName of ["poem", "funFact", "activity"] as const) {
       const count = words(creature[sectionName].text);
+      const characterCount = characters(creature[sectionName].text);
+      const lineCount = explicitLines(creature[sectionName].text);
+      const pptxLimit = pptxProfile.sections[sectionName];
+      const characterLimit = content.language === "kn" ? Math.floor(pptxLimit.characters * 0.85) : pptxLimit.characters;
       wordCount += count;
-      if (count > LIMITS.maxSectionWords) {
+      if (creature[sectionName].language !== content.language) {
+        issues.push({ level: "error", code: "section_language_mismatch", path: `creatures.${index}.${sectionName}.language`, message: `${sectionName} language does not match the book language.` });
+      }
+      if (count > pptxLimit.words) {
         issues.push({
           level: "error",
-          code: "section_too_long",
+          code: "section_word_overflow",
           path: `creatures.${index}.${sectionName}.text`,
-          message: `${sectionName} exceeds ${LIMITS.maxSectionWords} words.`
+          message: `${sectionName} exceeds the ${content.effectiveAgeBand} PPTX limit of ${pptxLimit.words} words.`
         });
       }
+      if (characterCount > characterLimit) issues.push({ level: "error", code: "section_character_overflow", path: `creatures.${index}.${sectionName}.text`, message: `${sectionName} exceeds the ${content.effectiveAgeBand}${content.language === "kn" ? " Kannada" : ""} PPTX limit of ${characterLimit} characters.` });
+      if (lineCount > pptxProfile.maxExplicitLines) issues.push({ level: "error", code: "section_line_overflow", path: `creatures.${index}.${sectionName}.text`, message: `${sectionName} exceeds the ${content.effectiveAgeBand} PPTX limit of ${pptxProfile.maxExplicitLines} explicit lines.` });
     }
     const docxLimit = DOCX_TYPOGRAPHY_BY_AGE[content.effectiveAgeBand].maxSectionWords;
     for (const sectionName of ["funFact", "activity"] as const) {
@@ -146,6 +168,9 @@ export function validateBookContent(
   }
   if (wordCount > LIMITS.maxTotalWords) {
     issues.push({ level: "error", code: "word_limit", path: "creatures", message: `Total word count ${wordCount} exceeds ${LIMITS.maxTotalWords}.` });
+  }
+  if (content.language === "kn") {
+    issues.push({ level: "warning", code: "kannada_pptx_font_required", path: "language", message: "Kannada PPTX output references Noto Sans Kannada but does not embed it; install the font on viewing and editing systems." });
   }
 
   return {

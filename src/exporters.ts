@@ -17,7 +17,7 @@ import {
 import { randomUUID } from "node:crypto";
 import JSZip from "jszip";
 import { createRequire } from "node:module";
-import { DOCX_TYPOGRAPHY_BY_AGE, type BookContent } from "./domain.ts";
+import { DOCX_TYPOGRAPHY_BY_AGE, PPTX_AGE_PROFILES, type BookContent, type BookRequest } from "./domain.ts";
 import { fileDigest, safeOutputName, type ExportRecord } from "./project.ts";
 import { normalizePoemText } from "./poems.ts";
 
@@ -206,12 +206,19 @@ export async function exportDocx(content: BookContent, exportDir: string): Promi
   return { format: "docx", relativePath: filename, ...digest, createdAt: new Date().toISOString() };
 }
 
-export async function exportPptx(content: BookContent, exportDir: string): Promise<ExportRecord> {
+export async function exportPptx(
+  content: BookContent,
+  exportDir: string,
+  context: Pick<BookRequest, "ageBand" | "language"> = { ageBand: content.effectiveAgeBand, language: content.language }
+): Promise<ExportRecord> {
   await mkdir(exportDir, { recursive: true });
   const filename = `${safeOutputName(content.title)}.pptx`;
   const outputPath = path.join(exportDir, filename);
   const pptx = new PptxGenJS();
   const font = documentFont(content.language);
+  const languageTag = documentLanguage(content.language);
+  const profile = PPTX_AGE_PROFILES[context.ageBand];
+  const bodyFontSize = profile.bodyFontSize + (content.language === "kn" ? 1 : 0);
   pptx.layout = "LAYOUT_WIDE";
   pptx.author = "AI Book Agent MCP Lite";
   pptx.subject = "Children's creature poetry activity book";
@@ -221,29 +228,32 @@ export async function exportPptx(content: BookContent, exportDir: string): Promi
   pptx.theme = {
     headFontFace: font,
     bodyFontFace: font,
-    
   };
 
   const cover = pptx.addSlide();
   cover.background = { color: COLORS.cream };
-  cover.addText(content.title, { x: 0.8, y: 2.2, w: 11.7, h: 1, fontSize: 34, bold: true, align: "center", color: COLORS.navy, margin: 0.05 });
-  cover.addText(`${content.creatures.length} wonderful creatures`, { x: 1.5, y: 3.45, w: 10.3, h: 0.5, fontSize: 20, align: "center", color: COLORS.teal, margin: 0.02 });
+  cover.addText(content.title, { x: 0.8, y: 2.1, w: 11.7, h: 1.15, fontFace: font, fontSize: 52, lang: languageTag, bold: true, align: "center", color: COLORS.navy, margin: 0.05 });
+  cover.addText(`${content.creatures.length} wonderful creatures`, { x: 1.5, y: 3.45, w: 10.3, h: 0.5, fontFace: font, fontSize: 20, lang: languageTag, align: "center", color: COLORS.teal, margin: 0.02 });
+  if (content.closingNote) cover.addText(content.closingNote, { x: 1.2, y: 6.45, w: 10.9, h: 0.45, fontFace: font, fontSize: 16, lang: languageTag, align: "center", color: "5C6770", margin: 0.02 });
 
+  let slideNumber = 1;
   for (const creature of content.creatures) {
     for (const key of ["poem", "funFact", "activity"] as const) {
       const slide = pptx.addSlide();
+      slideNumber += 1;
       slide.background = { color: COLORS.cream };
-      slide.addText(creature.displayName, { x: 0.7, y: 0.45, w: 11.9, h: 0.55, fontSize: 28, bold: true, color: COLORS.navy, margin: 0.03 });
-      slide.addText(sectionTitle(key), { x: 0.72, y: 1.15, w: 3.0, h: 0.4, fontSize: 18, bold: true, color: key === "funFact" ? COLORS.coral : COLORS.teal, margin: 0.02 });
+      slide.addText(creature.displayName, { x: 0.7, y: 0.42, w: 11.9, h: 0.65, fontFace: font, fontSize: profile.creatureTitleFontSize, lang: languageTag, bold: true, color: COLORS.navy, margin: 0.03 });
+      slide.addText(sectionTitle(key), { x: 0.72, y: 1.17, w: 3.0, h: 0.45, fontFace: font, fontSize: profile.sectionTitleFontSize, lang: languageTag, bold: true, color: key === "funFact" ? COLORS.coral : COLORS.teal, margin: 0.02 });
       const body = key === "poem" ? `${creature.poem.title}\n\n${normalizePoemText(creature.poem.text)}` : creature[key].text;
-      slide.addText(body, { x: 0.8, y: 1.8, w: 7.3, h: 4.5, fontSize: 20, color: COLORS.ink, breakLine: false, valign: "middle", margin: 0.12, fit: "shrink" });
-      slide.addText(creature.altText, { x: 8.55, y: 2.0, w: 3.9, h: 2.8, fontSize: 16, italic: true, color: "5C6770", align: "center", valign: "middle", margin: 0.15, fill: { color: "E9F3F5" }, line: { color: "9BC8D1", width: 1 } });
-      slide.addText("Illustration placeholder", { x: 8.8, y: 5.05, w: 3.4, h: 0.35, fontSize: 12, color: "68737D", align: "center", margin: 0.01 });
+      slide.addText(body, { x: 0.8, y: 1.8, w: 7.3, h: 4.7, fontFace: font, fontSize: bodyFontSize, lang: languageTag, color: COLORS.ink, breakLine: false, valign: "middle", margin: 0.12 });
+      slide.addText(`Illustration brief:\n${creature.illustrationBrief}\n\nAlternative text:\n${creature.altText}`, { x: 8.55, y: 1.8, w: 3.9, h: 3.55, fontFace: font, fontSize: 16, lang: languageTag, color: "35434D", align: "left", valign: "middle", margin: 0.18, fill: { color: "E9F3F5" }, line: { color: "6B9FAA", width: 1.5 } });
+      slide.addText("Illustration placeholder", { x: 8.8, y: 5.05, w: 3.4, h: 0.35, fontFace: font, fontSize: 12, lang: languageTag, color: "68737D", align: "center", margin: 0.01 });
+      slide.addText(String(slideNumber), { x: 12.25, y: 7.02, w: 0.35, h: 0.2, fontFace: font, fontSize: 10, lang: languageTag, color: "68737D", align: "right", margin: 0 });
     }
   }
   await pptx.writeFile({ fileName: outputPath });
   const digest = await fileDigest(outputPath);
-  return { format: "pptx", relativePath: filename, ...digest, createdAt: new Date().toISOString() };
+  return { format: "pptx", relativePath: filename, ...digest, createdAt: new Date().toISOString(), ...(content.language === "kn" ? { warnings: ["Kannada PPTX output requires Noto Sans Kannada on viewing and editing systems; the font is not embedded."] } : {}) };
 }
 
 export async function exportPdf(content: BookContent, exportDir: string): Promise<ExportRecord> {
@@ -288,13 +298,14 @@ export async function exportPdf(content: BookContent, exportDir: string): Promis
 export async function exportSelectedFormats(
   content: BookContent,
   exportDir: string,
-  formats: Array<"docx" | "pptx" | "pdf">
+  formats: Array<"docx" | "pptx" | "pdf">,
+  context: Pick<BookRequest, "ageBand" | "language"> = { ageBand: content.effectiveAgeBand, language: content.language }
 ): Promise<ExportRecord[]> {
   const unique = Array.from(new Set(["docx" as const, ...formats]));
   const records: ExportRecord[] = [];
   for (const format of unique) {
     if (format === "docx") records.push(await exportDocx(content, exportDir));
-    if (format === "pptx") records.push(await exportPptx(content, exportDir));
+    if (format === "pptx") records.push(await exportPptx(content, exportDir, context));
     if (format === "pdf") records.push(await exportPdf(content, exportDir));
   }
   return records;

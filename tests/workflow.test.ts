@@ -16,6 +16,7 @@ import {
   updateCreatureSelection
 } from "../src/workflow.ts";
 import { loadProject } from "../src/project.ts";
+import { exportSelectedFormats } from "../src/exporters.ts";
 
 vi.mock("../src/exporters.ts", () => ({
   exportSelectedFormats: vi.fn(async () => [{
@@ -109,6 +110,12 @@ describe("persisted workflow bookkeeping", () => {
 
     vi.setSystemTime(new Date("2026-07-31T10:00:04.000Z"));
     const exported = await generateDocuments(projectDir, ["docx"]);
+    expect(vi.mocked(exportSelectedFormats)).toHaveBeenLastCalledWith(
+      content,
+      expect.stringMatching(/[\\/]exports$/u),
+      ["docx"],
+      expect.objectContaining({ ageBand: "6-8", language: "en" })
+    );
     const reloadedExport = await loadProject(projectDir);
     expect(exported).toMatchObject({
       revision: 5,

@@ -14,6 +14,8 @@ The mandatory artifact is DOCX. PPTX and PDF are optional and are generated befo
 
 The DOCX page sequence is deterministic: one cover, then one poem page, one fun-fact page, and one activity page for every approved creature. A non-empty closing note adds one final page. The projected page count is therefore `1 + (3 × creatures) + optional closing page`.
 
+PPTX output uses editable native text and shapes with a deterministic cover plus poem, fun-fact, and activity slide for every creature (`1 + 3 × creatures`). Age-band typography, blocking overflow limits, structural checks, accessibility behavior, and visual QA are specified in [MVP PowerPoint generation](docs/pptx-generation.md).
+
 ### Boundaries
 
 - Default: 5 creatures
@@ -103,6 +105,8 @@ file so the font can be embedded. The exporter fails clearly instead of
 producing a PDF with missing glyphs.
 
 DOCX generation itself remains local and requires no Office installation, cloud conversion, Canva access, or paid API. Optional visual QA uses local LibreOffice and Poppler. Kannada DOCX release QA requires `Noto Sans Kannada` to be installed and remains subject to human language and rendered-glyph review under issue #1.
+
+PPTX does not embed `Noto Sans Kannada`; Kannada decks therefore include an export warning and require the font on every viewing or editing system.
 
 ## CLI
 

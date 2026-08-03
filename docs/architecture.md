@@ -17,7 +17,7 @@
 - `poems.ts`: canonical age defaults, iteration progression, normalization, and structural analysis.
 - `validation.ts`: schema, coverage, page, word, language, and review checks.
 - `project.ts`: atomic manifest persistence, provenance, paths, and checksums.
-- `exporters.ts`: deterministic DOCX, PPTX, and PDF creation.
+- `exporters.ts`: deterministic DOCX, PPTX, and PDF creation. PPTX uses age-band layout profiles and editable Office text/shapes.
 - `canva.ts`: readiness, consent, handoff, and URL validation.
 - `workflow.ts`: stateful orchestration.
 - `server.ts`: MCP tools.
@@ -44,3 +44,5 @@ Poem iteration is a separate ledger: iteration one keeps the selected age band a
 ## Future extensions
 
 The MVP implements only creature poetry activity books. Independent stories, connected narratives, other book types, direct model providers, image generation, and native Canva automation remain versioned future extensions.
+
+PPTX reliability is split into deterministic OOXML inspection in the automated test suite and optional local rendering with LibreOffice and Poppler. Structural tests are required in CI; rendered visual review covers representative 1-, 5-, 11-, and 20-creature decks without committing platform-dependent bitmap baselines.

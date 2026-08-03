@@ -139,7 +139,7 @@ export async function generateDocuments(
   const validation = validateBookContent(content, project.selection.current, project.request);
   if (!validation.report.valid) throw new Error("Book content has blocking validation errors.");
   const exportDir = resolveInside(projectDir, "exports");
-  const records = await exportSelectedFormats(content, exportDir, formats ?? project.request.outputFormats);
+  const records = await exportSelectedFormats(content, exportDir, formats ?? project.request.outputFormats, { ageBand: content.effectiveAgeBand, language: project.request.language });
   return persistMutation(projectDir, project, {
     stage: "documents_ready",
     exports: records
@@ -184,7 +184,7 @@ export function deliverySummary(project: BookProject) {
     ? validateBookContent(project.content, project.selection.current, project.request)
     : undefined;
   const contentReviewIssues = validation?.report.issues
-    .filter((issue) => issue.level === "warning")
+    .filter((issue) => issue.level === "warning" && issue.code !== "kannada_pptx_font_required")
     .map(({ code, path, message }) => ({ code, path, message })) ?? [];
 
   return {
