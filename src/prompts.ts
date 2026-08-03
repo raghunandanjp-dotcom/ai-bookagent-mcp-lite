@@ -1,5 +1,6 @@
 import type { BookRequest, Creature } from "./domain.ts";
 import { batchCreatures } from "./selection.ts";
+import { effectiveAgeBand, poemStructure } from "./poems.ts";
 
 const AGE_GUIDANCE: Record<BookRequest["ageBand"], string> = {
   "3-5": "Use read-aloud language, repetition, and 20-50 words per section.",
@@ -25,13 +26,16 @@ function safeReferenceText(text: string): string {
 
 export function prepareAuthoringPrompts(
   request: BookRequest,
-  creatures: Creature[]
+  creatures: Creature[],
+  generationAttempt = 0
 ): AuthoringPromptPackage {
+  const authoringAge = effectiveAgeBand(request.ageBand, generationAttempt);
+  const structure = poemStructure(authoringAge);
   const languageInstruction =
     request.language === "kn"
       ? "Write natively in Kannada script. Do not transliterate. Mark every section needs_review because Kannada requires human language review."
       : "Write in English.";
-  const expectedOutput = `Return only JSON with schemaVersion "1.0", title, language, creatures, and optional closingNote. Each creature must contain creatureId, displayName, poem, funFact, activity, illustrationBrief, and altText. Each content section contains text, language, and reviewStatus.`;
+  const expectedOutput = `Return only JSON with schemaVersion "1.1", title, language, selectedAgeBand "${request.ageBand}", effectiveAgeBand "${authoringAge}", generationAttempt ${generationAttempt}, creatures, and optional closingNote. Each creature must contain creatureId, displayName, poem, funFact, activity, illustrationBrief, and altText. Poem contains title, text, language, reviewStatus, structureVersion "1.0", and rhymeScheme. Other content sections contain text, language, and reviewStatus.`;
 
   return {
     promptVersion: "full-pipeline-v3-inspired/1.0",
@@ -44,8 +48,10 @@ export function prepareAuthoringPrompts(
         "Create one polished children's creature poetry-book entry for every listed creature.",
         `Book: ${request.title}`,
         `Theme: ${request.theme}`,
-        `Audience: ages ${request.ageBand}. ${AGE_GUIDANCE[request.ageBand]}`,
+        `Selected audience: ages ${request.ageBand}. Effective generation band: ages ${authoringAge}. ${AGE_GUIDANCE[authoringAge]}`,
         languageInstruction,
+        `Give every poem a short title. Write exactly ${structure.stanzaCount} stanzas with exactly ${structure.linesPerStanza} lines per stanza and use rhyme scheme ${structure.rhymeScheme} in every stanza. Separate lines with one newline and stanzas with one blank line. Do not repeat a complete stanza immediately.`,
+        request.language === "kn" ? "Adapt the poem natively for Kannada sound, cadence, and imagery; never translate line by line. Rhyme quality requires human review." : "Use natural English end rhymes matching the declared scheme.",
         "For each creature, create exactly one poem, one accurate fun fact, and one safe activity.",
         "Poems and activity framing may be whimsical. Never present invented or whimsical claims as facts.",
         "Do not encourage touching, feeding, capturing, or approaching wildlife. Flag adult supervision when appropriate.",

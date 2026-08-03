@@ -36,6 +36,7 @@ export interface ExportRecord {
   bytes: number;
   createdAt: string;
   sourceRevision?: number;
+  warnings?: string[];
 }
 
 export interface PrimaryOutputAcceptance {
@@ -53,6 +54,12 @@ export interface CanvaDesignSelection {
   templateUrl?: string;
   selectedAt: string;
   sourceRevision: number;
+}
+
+export interface ExportFailure {
+  format: "docx" | "pptx" | "pdf";
+  code: string;
+  message: string;
 }
 
 export interface CanvaState {
@@ -76,9 +83,11 @@ export interface BookProject {
   stage: ProjectStage;
   request: BookRequest;
   selection: SelectionState;
+  contentGeneration: { iterationsUsed: number; currentAttempt: 0 | 1 | 2 };
   content?: BookContent;
   exports: ExportRecord[];
   primaryOutput: PrimaryOutputAcceptance;
+  exportFailures: ExportFailure[];
   canva: CanvaState;
 }
 
@@ -106,8 +115,10 @@ export function createProject(input: unknown): BookProject {
       history: [],
       cumulativeExclusions: []
     },
+    contentGeneration: { iterationsUsed: 0, currentAttempt: 0 },
     exports: [],
     primaryOutput: { status: "not_ready" },
+    exportFailures: [],
     canva: { status: "not_checked" }
   };
 }
@@ -123,9 +134,11 @@ export function parseProject(input: unknown): BookProject {
     sourceRevision: typeof candidate.sourceRevision === "number" ? candidate.sourceRevision : 1,
     reworksUsed: typeof candidate.reworksUsed === "number" ? candidate.reworksUsed : 0,
     primaryOutput: (candidate.primaryOutput as PrimaryOutputAcceptance | undefined) ?? { status: "not_ready" },
+    contentGeneration: (candidate.contentGeneration as BookProject["contentGeneration"] | undefined) ?? { iterationsUsed: 0, currentAttempt: 0 },
     request: bookRequestSchema.parse(candidate.request),
     selection: selectionStateSchema.parse(candidate.selection),
-    content: candidate.content ? bookContentSchema.parse(candidate.content) : undefined
+    content: candidate.content ? bookContentSchema.parse(candidate.content) : undefined,
+    exportFailures: Array.isArray(candidate.exportFailures) ? candidate.exportFailures as ExportFailure[] : []
   };
   project.exports = project.exports.map((record) => ({
     ...record,

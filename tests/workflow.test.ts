@@ -14,20 +14,24 @@ import {
   initializeProject,
   reworkPrimaryOutput,
   selectCanvaDesign,
+  reiterateAuthoringPrompt,
   setCanvaCapability,
   updateCreatureSelection
 } from "../src/workflow.ts";
 import { loadProject } from "../src/project.ts";
+import { exportSelectedFormats } from "../src/exporters.ts";
 
 vi.mock("../src/exporters.ts", () => ({
-  exportSelectedFormats: vi.fn(async (_content, _dir, formats: Array<"docx" | "pptx" | "pdf">) =>
-    formats.map((format) => ({
+  exportSelectedFormats: vi.fn(async (_content, _dir, formats: Array<"docx" | "pptx" | "pdf">, context?: { ensureDocx?: boolean }) => ({
+    records: Array.from(new Set(context?.ensureDocx === false ? formats : ["docx" as const, ...formats])).map((format) => ({
       format,
       relativePath: `ocean-friends.${format}`,
       sha256: format[0].repeat(64),
       bytes: 1024,
       createdAt: new Date().toISOString()
-    })))
+    })),
+    failures: []
+  }))
 }));
 
 const creature = {
@@ -47,13 +51,16 @@ const section = (text: string) => ({
 });
 
 const content = {
-  schemaVersion: "1.0" as const,
+  schemaVersion: "1.1" as const,
   title: "Ocean Friends",
   language: "en" as const,
+  selectedAgeBand: "6-8" as const,
+  effectiveAgeBand: "6-8" as const,
+  generationAttempt: 0,
   creatures: [{
     creatureId: "octopus",
     displayName: "Octopus",
-    poem: section("Eight arms wave beneath the sea."),
+    poem: { ...section("Eight arms wave beneath the sea\nDancing wild and swimming free\nHiding where the corals grow\n\nWaving to the fish below\nGliding through the water blue\nOctopus now waves to you"), title: "Waving Arms", structureVersion: "1.0" as const, rhymeScheme: "AAB" as const },
     funFact: section("An octopus has three hearts."),
     activity: section("Draw and count eight octopus arms."),
     illustrationBrief: "A friendly octopus near coral.",
@@ -109,6 +116,12 @@ describe("persisted workflow bookkeeping", () => {
 
     vi.setSystemTime(new Date("2026-07-31T10:00:04.000Z"));
     const exported = await generateDocuments(projectDir, ["docx"]);
+    expect(vi.mocked(exportSelectedFormats)).toHaveBeenLastCalledWith(
+      content,
+      expect.stringMatching(/[\\/]exports$/u),
+      ["docx"],
+      expect.objectContaining({ ageBand: "6-8", language: "en" })
+    );
     const reloadedExport = await loadProject(projectDir);
     expect(exported).toMatchObject({
       revision: 5,
@@ -192,6 +205,44 @@ describe("persisted workflow bookkeeping", () => {
     await expect(generateDocuments(projectDir, ["pptx"])).rejects.toThrow(/accept the current docx/i);
     await expect(setCanvaCapability(projectDir, { available: true })).rejects.toThrow(/accept the current docx/i);
     await acceptPrimaryOutput(projectDir);
-    await expect(generateDocuments(projectDir, ["pptx"])).resolves.toMatchObject({ stage: "secondary_outputs_ready" });
+    const withPptx = await generateDocuments(projectDir, ["pptx"]);
+    expect(withPptx).toMatchObject({ stage: "secondary_outputs_ready", primaryOutput: { status: "accepted" } });
+    expect(withPptx.exports.map((record) => record.format)).toEqual(["docx", "pptx"]);
+    expect(vi.mocked(exportSelectedFormats)).toHaveBeenLastCalledWith(
+      content,
+      expect.stringMatching(/[\\/]exports$/u),
+      ["pptx"],
+      expect.objectContaining({ ensureDocx: false })
+    );
+    await expect(generateDocuments(projectDir, ["docx", "pdf"])).rejects.toThrow(/docx first/i);
+  });
+
+  it("iterates once at the selected age and then at the next age", async () => {
+    await initializeProject(projectDir, { title: "Ocean Friends", theme: "ocean", ageBand: "6-8", creatureCount: 1 });
+    await updateCreatureSelection(projectDir, [creature]);
+    await approveCreatureSelection(projectDir);
+
+    const first = await reiterateAuthoringPrompt(projectDir);
+    expect(first.expectedOutput).toContain('effectiveAgeBand "6-8"');
+    const second = await reiterateAuthoringPrompt(projectDir);
+    expect(second.expectedOutput).toContain('effectiveAgeBand "9-11"');
+    await expect(reiterateAuthoringPrompt(projectDir)).rejects.toThrow(/two poem iterations/i);
+    expect((await loadProject(projectDir)).selection.regenerationsUsed).toBe(0);
+  });
+
+  it("persists DOCX and marks the project partially complete when optional PDF fails", async () => {
+    await initializeProject(projectDir, { title: "Ocean Friends", theme: "ocean", creatureCount: 1, outputFormats: ["pdf"] });
+    await updateCreatureSelection(projectDir, [creature]);
+    await approveCreatureSelection(projectDir);
+    await acceptBookContent(projectDir, content);
+    vi.mocked(exportSelectedFormats).mockResolvedValueOnce({
+      records: [{ format: "docx", relativePath: "ocean-friends.docx", sha256: "a".repeat(64), bytes: 1024, createdAt: new Date().toISOString() }],
+      failures: [{ format: "pdf", code: "pdf_font_missing", message: "Font missing." }]
+    });
+    const exported = await generateDocuments(projectDir);
+    expect(exported.stage).toBe("partially_complete");
+    expect(exported.exports.map((record) => record.format)).toEqual(["docx"]);
+    expect(exported.exportFailures).toEqual([{ format: "pdf", code: "pdf_font_missing", message: "Font missing." }]);
+    expect((await loadProject(projectDir)).exportFailures).toEqual(exported.exportFailures);
   });
 });

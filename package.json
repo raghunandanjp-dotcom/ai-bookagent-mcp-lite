@@ -12,6 +12,11 @@
     "dev": "tsx src/cli.ts",
     "start": "node dist/server.js",
     "test": "vitest run",
+    "test:pptx": "vitest run tests/pptx-validation.test.ts tests/pptx-export.test.ts",
+    "qa:pptx:inspect": "vitest run tests/pptx-export.test.ts",
+    "qa:pptx:render": "npm run build && node scripts/render-pptx-qa.mjs",
+    "qa:pdf:inspect": "vitest run tests/exporters.test.ts",
+    "qa:pdf:render": "npm run build && node scripts/render-pdf-qa.mjs",
     "test:smoke": "node --experimental-strip-types scripts/smoke-core.mts",
     "test:watch": "vitest",
     "check": "npm run build && npm run check:entrypoints && npm test && npm run check:paths",
@@ -33,6 +38,7 @@
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.17.0",
     "docx": "^9.5.1",
+    "jszip": "^3.10.1",
     "pdfkit": "^0.17.1",
     "pptxgenjs": "^4.0.1",
     "zod": "^3.25.76"
@@ -40,6 +46,7 @@
   "devDependencies": {
     "@types/node": "^22.15.0",
     "@types/pdfkit": "^0.17.3",
+    "pdfjs-dist": "^5.4.149",
     "tsx": "^4.20.3",
     "typescript": "^5.8.3",
     "vitest": "^3.2.4"

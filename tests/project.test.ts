@@ -22,11 +22,13 @@ describe("portable project state", () => {
     delete legacy.sourceRevision;
     delete legacy.reworksUsed;
     delete legacy.primaryOutput;
+    delete legacy.contentGeneration;
     const parsed = parseProject(legacy);
     expect(parsed).toMatchObject({
       sourceRevision: 1,
       reworksUsed: 0,
-      primaryOutput: { status: "not_ready" }
+      primaryOutput: { status: "not_ready" },
+      contentGeneration: { iterationsUsed: 0, currentAttempt: 0 }
     });
   });
 });

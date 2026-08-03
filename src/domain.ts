@@ -11,12 +11,49 @@ export const LIMITS = {
   maxTitleCharacters: 120,
   maxBriefCharacters: 20_000,
   maxCreatureNameCharacters: 100,
+  maxDisplayNameCharacters: 80,
+  maxIllustrationBriefCharacters: 400,
+  maxAltTextCharacters: 300,
+  maxClosingNoteCharacters: 240,
   maxSectionWords: 250,
   maxTotalWords: 25_000
 } as const;
 
+export const PPTX_AGE_PROFILES = {
+  "3-5": { creatureTitleFontSize: 30, sectionTitleFontSize: 24, bodyFontSize: 28, maxExplicitLines: 8, sections: { poem: { words: 40, characters: 260 }, funFact: { words: 25, characters: 180 }, activity: { words: 30, characters: 220 } } },
+  "6-8": { creatureTitleFontSize: 28, sectionTitleFontSize: 24, bodyFontSize: 24, maxExplicitLines: 10, sections: { poem: { words: 60, characters: 400 }, funFact: { words: 40, characters: 280 }, activity: { words: 50, characters: 340 } } },
+  "9-11": { creatureTitleFontSize: 26, sectionTitleFontSize: 24, bodyFontSize: 21, maxExplicitLines: 12, sections: { poem: { words: 90, characters: 600 }, funFact: { words: 60, characters: 420 }, activity: { words: 75, characters: 520 } } },
+  "12-14": { creatureTitleFontSize: 24, sectionTitleFontSize: 24, bodyFontSize: 18, maxExplicitLines: 14, sections: { poem: { words: 120, characters: 800 }, funFact: { words: 80, characters: 560 }, activity: { words: 100, characters: 700 } } }
+} as const satisfies Record<AgeBand, object>;
+
 export const languageSchema = z.enum(["en", "kn"]);
 export const ageBandSchema = z.enum(["3-5", "6-8", "9-11", "12-14"]);
+export type AgeBand = z.infer<typeof ageBandSchema>;
+export const rhymeSchemeSchema = z.enum(["AA", "AAB", "AABB"]);
+
+export const POEM_STRUCTURE_BY_AGE = {
+  "3-5": { stanzaCount: 2, linesPerStanza: 2, rhymeScheme: "AA", minWords: 8, maxWords: 40 },
+  "6-8": { stanzaCount: 2, linesPerStanza: 3, rhymeScheme: "AAB", minWords: 16, maxWords: 70 },
+  "9-11": { stanzaCount: 3, linesPerStanza: 4, rhymeScheme: "AABB", minWords: 30, maxWords: 130 },
+  "12-14": { stanzaCount: 4, linesPerStanza: 3, rhymeScheme: "AAB", minWords: 48, maxWords: 200 }
+} as const satisfies Record<AgeBand, object>;
+
+export const DOCX_TYPOGRAPHY_BY_AGE = {
+  "3-5": { bodyPoints: 20, poemPoints: 22, lineSpacing: 1.3, maxSectionWords: 70 },
+  "6-8": { bodyPoints: 18, poemPoints: 20, lineSpacing: 1.25, maxSectionWords: 100 },
+  "9-11": { bodyPoints: 16, poemPoints: 18, lineSpacing: 1.2, maxSectionWords: 140 },
+  "12-14": { bodyPoints: 14, poemPoints: 16, lineSpacing: 1.15, maxSectionWords: 180 }
+} as const satisfies Record<AgeBand, object>;
+
+export const DOCX_LIMITS = {
+  maxIllustrationBriefWords: 60,
+  maxAltTextWords: 40,
+  maxClosingNoteWords: 120
+} as const;
+
+export const nextAgeBand = (ageBand: AgeBand): AgeBand => ({
+  "3-5": "6-8", "6-8": "9-11", "9-11": "12-14", "12-14": "12-14"
+})[ageBand] as AgeBand;
 export const creatureStatusSchema = z.enum(["living", "extinct", "mythical"]);
 
 export const creatureSchema = z.object({
@@ -51,22 +88,31 @@ export const contentSectionSchema = z.object({
   reviewStatus: z.enum(["needs_review", "human_reviewed", "source_supported"]).default("needs_review")
 });
 
+export const poemSectionSchema = contentSectionSchema.extend({
+  title: z.string().trim().min(1).max(80),
+  structureVersion: z.literal("1.0"),
+  rhymeScheme: rhymeSchemeSchema
+});
+
 export const creatureContentSchema = z.object({
   creatureId: z.string().min(1),
-  displayName: z.string().min(1),
-  poem: contentSectionSchema,
+  displayName: z.string().min(1).max(LIMITS.maxDisplayNameCharacters),
+  poem: poemSectionSchema,
   funFact: contentSectionSchema,
   activity: contentSectionSchema,
-  illustrationBrief: z.string().min(1),
-  altText: z.string().min(1)
+  illustrationBrief: z.string().min(1).max(LIMITS.maxIllustrationBriefCharacters),
+  altText: z.string().min(1).max(LIMITS.maxAltTextCharacters)
 });
 
 export const bookContentSchema = z.object({
-  schemaVersion: z.literal("1.0"),
+  schemaVersion: z.literal("1.1"),
   title: z.string().min(1),
   language: languageSchema,
+  selectedAgeBand: ageBandSchema,
+  effectiveAgeBand: ageBandSchema,
+  generationAttempt: z.number().int().min(0).max(2),
   creatures: z.array(creatureContentSchema).min(1).max(LIMITS.maxCreatures),
-  closingNote: z.string().optional()
+  closingNote: z.string().max(LIMITS.maxClosingNoteCharacters).optional()
 });
 
 export const selectionAttemptSchema = z.object({
@@ -88,6 +134,10 @@ export type BookRequest = z.infer<typeof bookRequestSchema>;
 export type Creature = z.infer<typeof creatureSchema>;
 export type BookContent = z.infer<typeof bookContentSchema>;
 export type SelectionState = z.infer<typeof selectionStateSchema>;
+
+export function projectedPageCount(content: Pick<BookContent, "creatures" | "closingNote">): number {
+  return 1 + content.creatures.length * 3 + (content.closingNote?.trim() ? 1 : 0);
+}
 
 export interface ValidationIssue {
   level: "error" | "warning";

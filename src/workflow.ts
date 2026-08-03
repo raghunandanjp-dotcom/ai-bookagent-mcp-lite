@@ -4,6 +4,7 @@ import { z } from "zod";
 import {
   bookContentSchema,
   creatureSchema,
+  projectedPageCount,
   type BookContent
 } from "./domain.ts";
 import { checkCanvaReadiness, prepareCanvaHandoff, recordCanvaConsent, recordCanvaResult } from "./canva.ts";
@@ -20,7 +21,7 @@ import { approveSelection, beginSelection } from "./selection.ts";
 import { validateBookContent } from "./validation.ts";
 
 type ProjectMutation = Partial<
-  Pick<BookProject, "stage" | "selection" | "content" | "exports" | "canva" | "sourceRevision" | "reworksUsed" | "primaryOutput">
+  Pick<BookProject, "stage" | "selection" | "contentGeneration" | "content" | "exports" | "exportFailures" | "canva" | "sourceRevision" | "reworksUsed" | "primaryOutput">
 >;
 
 const MAX_REWORKS = 2;
@@ -69,6 +70,7 @@ export async function updateCreatureSelection(
     sourceRevision: project.sourceRevision + 1,
     content: undefined,
     primaryOutput: { status: "not_ready" },
+    exportFailures: [],
     canva: { status: "not_checked" }
   });
 }
@@ -84,17 +86,28 @@ export async function approveCreatureSelection(projectDir: string): Promise<Book
 export async function createPromptPackage(projectDir: string) {
   const project = await loadProject(projectDir);
   if (!project.selection.approved) throw new Error("Approve the creature list before preparing content prompts.");
-  const promptPackage = prepareAuthoringPrompts(project.request, project.selection.current);
+  const promptPackage = prepareAuthoringPrompts(project.request, project.selection.current, project.contentGeneration.currentAttempt);
   const promptDir = resolveInside(projectDir, "prompts");
   await mkdir(promptDir, { recursive: true });
   await writeFile(path.join(promptDir, "authoring-prompt-package.json"), `${JSON.stringify(promptPackage, null, 2)}\n`, "utf8");
   return promptPackage;
 }
 
+export async function reiterateAuthoringPrompt(projectDir: string) {
+  const project = await loadProject(projectDir);
+  if (!project.selection.approved) throw new Error("Approve the creature list before reiterating content.");
+  if (project.contentGeneration.iterationsUsed >= 2) throw new Error("Only two poem iterations are permitted.");
+  const attempt = (project.contentGeneration.iterationsUsed + 1) as 1 | 2;
+  const updated = await persistMutation(projectDir, project, {
+    contentGeneration: { iterationsUsed: attempt, currentAttempt: attempt }
+  });
+  return prepareAuthoringPrompts(updated.request, updated.selection.current, attempt);
+}
+
 export async function acceptBookContent(projectDir: string, contentInput: unknown) {
   const project = await loadProject(projectDir);
   if (!project.selection.approved) throw new Error("Approve the creature list before accepting book content.");
-  const result = validateBookContent(contentInput, project.selection.current);
+  const result = validateBookContent(contentInput, project.selection.current, project.request, project.contentGeneration.currentAttempt);
   const stage =
     !result.report.valid ? "content_review_required" :
     project.request.language === "kn" ? "language_review_required" :
@@ -104,6 +117,7 @@ export async function acceptBookContent(projectDir: string, contentInput: unknow
     content: result.content,
     sourceRevision: project.sourceRevision + 1,
     primaryOutput: { status: "not_ready" },
+    exportFailures: [],
     canva: { status: "not_checked" }
   });
   return { project: updated, report: result.report };
@@ -123,7 +137,7 @@ export async function replaceCreatureContent(projectDir: string, creatureInput: 
   const creatures = [...project.content.creatures];
   creatures[existingIndex] = replacement;
   const content = { ...project.content, creatures };
-  const validation = validateBookContent(content, project.selection.current);
+  const validation = validateBookContent(content, project.selection.current, project.request);
   const updated = await persistMutation(projectDir, project, {
     stage: validation.report.valid
       ? project.request.language === "kn" ? "language_review_required" : "content_review_required"
@@ -131,6 +145,7 @@ export async function replaceCreatureContent(projectDir: string, creatureInput: 
     content,
     sourceRevision: project.sourceRevision + 1,
     primaryOutput: { status: "not_ready" },
+    exportFailures: [],
     canva: { status: "not_checked" }
   });
   return { project: updated, affectedCreatureId: replacement.creatureId, report: validation.report };
@@ -142,14 +157,26 @@ export async function generateDocuments(
 ): Promise<BookProject> {
   const project = await loadProject(projectDir);
   const content: BookContent = bookContentSchema.parse(project.content);
-  const validation = validateBookContent(content, project.selection.current);
+  const validation = validateBookContent(content, project.selection.current, project.request);
   if (!validation.report.valid) throw new Error("Book content has blocking validation errors.");
   const requested = formats ?? ["docx"];
   if (requested.length === 0) throw new Error("Select at least one output format.");
   const secondary = requested.filter((format) => format !== "docx");
+  if (secondary.length > 0 && requested.includes("docx")) {
+    throw new Error("Generate and accept DOCX first, then request PPTX and/or PDF as secondary outputs.");
+  }
   if (secondary.length > 0) requireAcceptedPrimary(project);
   const exportDir = resolveInside(projectDir, "exports");
-  const records = (await exportSelectedFormats(content, exportDir, requested)).map((record) => ({
+  const result = await exportSelectedFormats(content, exportDir, requested, {
+    ageBand: content.effectiveAgeBand,
+    language: project.request.language,
+    ensureDocx: secondary.length === 0
+  });
+  if (secondary.length === 0 && !result.records.some((record) => record.format === "docx")) {
+    const failure = result.failures.find((item) => item.format === "docx");
+    throw new Error(failure?.message ?? "Mandatory DOCX export failed.");
+  }
+  const records = result.records.map((record) => ({
     ...record,
     sourceRevision: project.sourceRevision
   }));
@@ -160,8 +187,9 @@ export async function generateDocuments(
   ];
   const docx = records.find((record) => record.format === "docx");
   return persistMutation(projectDir, project, {
-    stage: docx ? "primary_output_ready" : "secondary_outputs_ready",
+    stage: result.failures.length > 0 ? "partially_complete" : docx ? "primary_output_ready" : "secondary_outputs_ready",
     exports,
+    exportFailures: result.failures,
     ...(docx ? {
       primaryOutput: {
         status: "ready_for_review" as const,
@@ -197,20 +225,30 @@ export async function reworkPrimaryOutput(projectDir: string, contentInput: unkn
     throw new Error("A DOCX awaiting review is required before requesting rework.");
   }
   if (project.reworksUsed >= MAX_REWORKS) throw new Error("The maximum of two primary-output reworks has been used.");
-  const validation = validateBookContent(contentInput, project.selection.current);
+  const validation = validateBookContent(contentInput, project.selection.current, project.request);
   if (!validation.report.valid || !validation.content) throw new Error("Reworked content has blocking validation errors.");
   const sourceRevision = project.sourceRevision + 1;
   const exportDir = resolveInside(projectDir, "exports");
-  const [docx] = (await exportSelectedFormats(validation.content, exportDir, ["docx"])).map((record) => ({
-    ...record,
+  const result = await exportSelectedFormats(validation.content, exportDir, ["docx"], {
+    ageBand: validation.content.effectiveAgeBand,
+    language: project.request.language
+  });
+  const docxRecord = result.records.find((record) => record.format === "docx");
+  if (!docxRecord) {
+    const failure = result.failures.find((item) => item.format === "docx");
+    throw new Error(failure?.message ?? "Mandatory DOCX export failed.");
+  }
+  const docx = {
+    ...docxRecord,
     sourceRevision
-  }));
+  };
   const updated = await persistMutation(projectDir, project, {
     stage: "primary_output_ready",
     sourceRevision,
     reworksUsed: project.reworksUsed + 1,
     content: validation.content,
     exports: [...project.exports, docx],
+    exportFailures: result.failures,
     primaryOutput: {
       status: "ready_for_review",
       sourceRevision,
@@ -288,10 +326,10 @@ export async function acceptCanvaResult(projectDir: string, result: unknown): Pr
 
 export function deliverySummary(project: BookProject) {
   const validation = project.content
-    ? validateBookContent(project.content, project.selection.current)
+    ? validateBookContent(project.content, project.selection.current, project.request)
     : undefined;
   const contentReviewIssues = validation?.report.issues
-    .filter((issue) => issue.level === "warning")
+    .filter((issue) => issue.level === "warning" && issue.code !== "kannada_pptx_font_required")
     .map(({ code, path, message }) => ({ code, path, message })) ?? [];
   const currentFormats = new Set(currentExports(project).map((record) => record.format));
   const nextActions: string[] = [];
@@ -316,8 +354,11 @@ export function deliverySummary(project: BookProject) {
     stage: project.stage,
     creaturesCovered: project.content?.creatures.map((creature) => creature.displayName) ?? [],
     sectionsPerCreature: ["poem", "fun fact", "activity"],
-    pageCount: project.content ? 1 + project.content.creatures.length * 3 : 0,
+    pageCount: project.content ? projectedPageCount(project.content) : 0,
     language: project.request.language,
+    selectedAgeBand: project.request.ageBand,
+    effectiveAgeBand: project.content?.effectiveAgeBand ?? project.request.ageBand,
+    generationAttempt: project.contentGeneration.currentAttempt,
     languageReviewRequired: project.request.language === "kn",
     review: {
       language: {
@@ -334,6 +375,7 @@ export function deliverySummary(project: BookProject) {
     primaryOutput: project.primaryOutput,
     exports: currentExports(project),
     staleExports: project.exports.filter((record) => record.sourceRevision !== project.sourceRevision),
+    exportFailures: project.exportFailures,
     canva: project.canva,
     nextActions,
     deliveryComplete: project.canva.status === "complete" ||
