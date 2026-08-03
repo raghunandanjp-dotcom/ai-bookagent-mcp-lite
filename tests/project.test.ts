@@ -31,4 +31,10 @@ describe("portable project state", () => {
       contentGeneration: { iterationsUsed: 0, currentAttempt: 0 }
     });
   });
+
+  it("rejects malformed persisted Canva state", () => {
+    const project = createProject({ title: "Desert Friends", theme: "desert animals" });
+    const malformed = { ...project, canva: { status: "failed", failure: { code: "timeout" } } };
+    expect(() => parseProject(malformed)).toThrow();
+  });
 });

@@ -142,10 +142,10 @@ server.registerTool(
 server.registerTool(
   "check_canva_readiness",
   {
-    description: "Record whether Claude currently exposes an authorized Canva connector.",
+    description: "Record host-reported Canva setup and authorization readiness without sending book content.",
     inputSchema: {
       projectDir: z.string().min(1),
-      available: z.boolean(),
+      status: z.enum(["ready", "unavailable", "authorization_required"]),
       connectorName: z.string().optional(),
       toolName: z.string().optional()
     }
@@ -156,7 +156,7 @@ server.registerTool(
 server.registerTool(
   "confirm_canva_handoff",
   {
-    description: "Record explicit user consent before any content is prepared for Canva.",
+    description: "Persist explicit approval or decline before any content is handed to Canva.",
     inputSchema: {
       projectDir: z.string().min(1),
       consent: z.boolean()
@@ -183,7 +183,7 @@ server.registerTool(
 server.registerTool(
   "prepare_canva_handoff",
   {
-    description: "Return Canva connector-ready instructions after local exports and explicit consent.",
+    description: "Return an adapter-neutral Canva payload after local delivery and consent; this tool never invokes Canva.",
     inputSchema: { projectDir: z.string().min(1) }
   },
   async ({ projectDir }) => text(await getCanvaHandoff(projectDir))
@@ -192,15 +192,18 @@ server.registerTool(
 server.registerTool(
   "record_canva_result",
   {
-    description: "Validate and save the real Canva design ID and editable URL.",
+    description: "Persist either a structured connector failure or a validated Canva design result.",
     inputSchema: {
       projectDir: z.string().min(1),
-      designId: z.string().min(1),
-      editUrl: z.string().url()
+      outcome: z.enum(["success", "failed"]),
+      designId: z.string().min(1).optional(),
+      editUrl: z.string().url().optional(),
+      code: z.string().min(1).optional(),
+      message: z.string().min(1).optional(),
+      retryable: z.boolean().optional()
     }
   },
-  async ({ projectDir, designId, editUrl }) =>
-    text(await acceptCanvaResult(projectDir, { designId, editUrl }))
+  async ({ projectDir, ...result }) => text(await acceptCanvaResult(projectDir, result))
 );
 
 server.registerTool(

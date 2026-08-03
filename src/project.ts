@@ -1,6 +1,7 @@
 import { createHash, randomUUID } from "node:crypto";
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import path from "node:path";
+import { z } from "zod";
 import {
   bookContentSchema,
   bookRequestSchema,
@@ -25,6 +26,8 @@ export type ProjectStage =
   | "canva_setup_required"
   | "canva_design_selection_required"
   | "canva_consent_required"
+  | "canva_declined"
+  | "canva_failed"
   | "canva_complete"
   | "partially_complete"
   | "failed";
@@ -63,14 +66,45 @@ export interface ExportFailure {
 }
 
 export interface CanvaState {
-  status: "not_checked" | "setup_required" | "design_selection_required" | "ready_for_consent" | "consented" | "complete" | "failed";
+  status: "not_checked" | "setup_required" | "design_selection_required" | "ready_for_consent" | "declined" | "consented" | "complete" | "failed";
+  readiness?: "ready" | "unavailable" | "authorization_required";
+  checkedAt?: string;
+  adapter?: { connectorName?: string; toolName?: string };
+  setupInstructions?: string[];
   consentedAt?: string;
+  declinedAt?: string;
   designId?: string;
   editUrl?: string;
-  error?: string;
+  failure?: { code: string; message: string; retryable: boolean; failedAt: string };
   selection?: CanvaDesignSelection;
   sourceRevision?: number;
 }
+
+const canvaStateSchema = z.object({
+  status: z.enum(["not_checked", "setup_required", "design_selection_required", "ready_for_consent", "declined", "consented", "complete", "failed"]),
+  readiness: z.enum(["ready", "unavailable", "authorization_required"]).optional(),
+  checkedAt: z.string().datetime().optional(),
+  adapter: z.object({ connectorName: z.string().min(1).optional(), toolName: z.string().min(1).optional() }).optional(),
+  setupInstructions: z.array(z.string().min(1)).optional(),
+  consentedAt: z.string().datetime().optional(),
+  declinedAt: z.string().datetime().optional(),
+  designId: z.string().min(1).optional(),
+  editUrl: z.string().url().optional(),
+  failure: z.object({
+    code: z.string().min(1),
+    message: z.string().min(1),
+    retryable: z.boolean(),
+    failedAt: z.string().datetime()
+  }).optional(),
+  selection: z.object({
+    designId: z.string().min(1),
+    title: z.string().min(1),
+    templateUrl: z.string().url().optional(),
+    selectedAt: z.string().datetime(),
+    sourceRevision: z.number().int().positive()
+  }).optional(),
+  sourceRevision: z.number().int().positive().optional()
+});
 
 export interface BookProject {
   schemaVersion: typeof PROJECT_SCHEMA_VERSION;
@@ -138,7 +172,8 @@ export function parseProject(input: unknown): BookProject {
     request: bookRequestSchema.parse(candidate.request),
     selection: selectionStateSchema.parse(candidate.selection),
     content: candidate.content ? bookContentSchema.parse(candidate.content) : undefined,
-    exportFailures: Array.isArray(candidate.exportFailures) ? candidate.exportFailures as ExportFailure[] : []
+    exportFailures: Array.isArray(candidate.exportFailures) ? candidate.exportFailures as ExportFailure[] : [],
+    canva: canvaStateSchema.parse(candidate.canva ?? { status: "not_checked" })
   };
   project.exports = project.exports.map((record) => ({
     ...record,
