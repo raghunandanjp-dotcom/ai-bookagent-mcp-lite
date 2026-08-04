@@ -34,17 +34,18 @@ async function jsonFile(filePath: string): Promise<unknown> {
 
 const [, , command, projectDir, argument, flag] = process.argv;
 if (!command || !projectDir) usage();
+const absoluteProjectDir = path.resolve(projectDir);
 
 let result: unknown;
-if (command === "init" && argument) result = await initializeProject(projectDir, await jsonFile(argument));
-else if (command === "select" && argument) result = await updateCreatureSelection(projectDir, await jsonFile(argument), flag === "--exclude-previous");
-else if (command === "approve") result = await approveCreatureSelection(projectDir);
-else if (command === "prompt") result = await createPromptPackage(projectDir);
-else if (command === "content" && argument) result = await acceptBookContent(projectDir, await jsonFile(argument));
-else if (command === "export") result = await generateDocuments(projectDir, argument?.split(",") as Array<"docx" | "pptx" | "pdf"> | undefined);
-else if (command === "accept-docx") result = await acceptPrimaryOutput(projectDir);
-else if (command === "rework" && argument) result = await reworkPrimaryOutput(projectDir, await jsonFile(argument));
-else if (command === "summary") result = deliverySummary(await loadProject(projectDir));
+if (command === "init" && argument) result = await initializeProject(absoluteProjectDir, await jsonFile(argument));
+else if (command === "select" && argument) result = await updateCreatureSelection(absoluteProjectDir, await jsonFile(argument), flag === "--exclude-previous");
+else if (command === "approve") result = await approveCreatureSelection(absoluteProjectDir);
+else if (command === "prompt") result = await createPromptPackage(absoluteProjectDir);
+else if (command === "content" && argument) result = await acceptBookContent(absoluteProjectDir, await jsonFile(argument));
+else if (command === "export") result = await generateDocuments(absoluteProjectDir, argument?.split(",") as Array<"docx" | "pptx" | "pdf"> | undefined);
+else if (command === "accept-docx") result = await acceptPrimaryOutput(absoluteProjectDir);
+else if (command === "rework" && argument) result = await reworkPrimaryOutput(absoluteProjectDir, await jsonFile(argument));
+else if (command === "summary") result = deliverySummary(await loadProject(absoluteProjectDir));
 else usage();
 
 process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);

@@ -103,6 +103,8 @@ Build the project and configure the host with an absolute path at installation t
 
 The example intentionally uses a placeholder. Do not commit a machine-specific MCP configuration.
 
+MCP tool calls require an absolute `projectDir` selected by the host. Relative project directories are rejected before filesystem access because an MCP process may run from a system or otherwise host-dependent working directory. The CLI continues to accept relative project directories and resolves them from the user's current directory.
+
 Kannada DOCX/PPTX uses the `Noto Sans Kannada` font family. Kannada PDF export
 also requires `BOOK_AGENT_KANNADA_FONT_PATH` in the user's uncommitted `.env`
 file so the font can be embedded. The exporter fails clearly instead of

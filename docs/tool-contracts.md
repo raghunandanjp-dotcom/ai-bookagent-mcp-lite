@@ -2,7 +2,7 @@
 
 ## `create_book_project`
 
-Creates the manifest from a theme, title, age band, language, creature count, brief, and requested export formats. Interactive creation requires explicit age and language choices after the initial natural-language prompt. Kannada is presented as experimental and requiring fluent human review and discretion; the user's prompt may remain in English. DOCX is inserted even when omitted.
+Creates the manifest from a theme, title, age band, language, creature count, brief, and requested export formats. `projectDir` must be an absolute path selected by the host; relative paths are rejected before any filesystem mutation so the MCP host's working directory cannot affect the destination. Interactive creation requires explicit age and language choices after the initial natural-language prompt. Kannada is presented as experimental and requiring fluent human review and discretion; the user's prompt may remain in English. DOCX is inserted even when omitted.
 
 ## `set_creature_selection`
 
