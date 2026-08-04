@@ -18,11 +18,12 @@ import {
   setCanvaCapability,
   updateCreatureSelection
 } from "../src/workflow.ts";
-import { loadProject } from "../src/project.ts";
+import { loadProject, saveProject } from "../src/project.ts";
 import { exportSelectedFormats } from "../src/exporters.ts";
+import { fixtureIllustrations } from "./fixtures/illustrations.ts";
 
 vi.mock("../src/exporters.ts", () => ({
-  exportSelectedFormats: vi.fn(async (_content, _dir, formats: Array<"docx" | "pptx" | "pdf">, context?: { ensureDocx?: boolean }) => ({
+  exportSelectedFormats: vi.fn(async (_content, _dir, formats: Array<"docx" | "pptx" | "pdf">, _illustrations, context?: { ensureDocx?: boolean }) => ({
     records: Array.from(new Set(context?.ensureDocx === false ? formats : ["docx" as const, ...formats])).map((format) => ({
       format,
       relativePath: `ocean-friends.${format}`,
@@ -67,6 +68,12 @@ const content = {
     altText: "A smiling octopus with eight visible arms."
   }]
 };
+
+async function seedIllustrations(projectDir: string) {
+  const project = await loadProject(projectDir);
+  const { assets } = await fixtureIllustrations(projectDir, content.creatures.map((item) => item.creatureId));
+  await saveProject(projectDir, { ...project, illustrations: assets });
+}
 
 describe("persisted workflow bookkeeping", () => {
   let projectDir: string;
@@ -113,6 +120,7 @@ describe("persisted workflow bookkeeping", () => {
     vi.setSystemTime(new Date("2026-07-31T10:00:03.000Z"));
     const accepted = await acceptBookContent(projectDir, content);
     expect(accepted.project.revision).toBe(4);
+    await seedIllustrations(projectDir);
 
     vi.setSystemTime(new Date("2026-07-31T10:00:04.000Z"));
     const exported = await generateDocuments(projectDir, ["docx"]);
@@ -120,6 +128,7 @@ describe("persisted workflow bookkeeping", () => {
       content,
       expect.stringMatching(/[\\/]exports$/u),
       ["docx"],
+      expect.anything(),
       expect.objectContaining({ ageBand: "6-8", language: "en" })
     );
     const reloadedExport = await loadProject(projectDir);
@@ -143,6 +152,7 @@ describe("persisted workflow bookkeeping", () => {
     await updateCreatureSelection(projectDir, [creature]);
     await approveCreatureSelection(projectDir);
     await acceptBookContent(projectDir, content);
+    await seedIllustrations(projectDir);
     await generateDocuments(projectDir, ["docx"]);
     await acceptPrimaryOutput(projectDir);
 
@@ -195,6 +205,7 @@ describe("persisted workflow bookkeeping", () => {
     await updateCreatureSelection(projectDir, [creature]);
     await approveCreatureSelection(projectDir);
     await acceptBookContent(projectDir, content);
+    await seedIllustrations(projectDir);
     await generateDocuments(projectDir, ["docx"]);
 
     const first = await reworkPrimaryOutput(projectDir, {
@@ -217,6 +228,7 @@ describe("persisted workflow bookkeeping", () => {
     await updateCreatureSelection(projectDir, [creature]);
     await approveCreatureSelection(projectDir);
     await acceptBookContent(projectDir, content);
+    await seedIllustrations(projectDir);
     await generateDocuments(projectDir, ["docx"]);
 
     await expect(generateDocuments(projectDir, ["pptx"])).rejects.toThrow(/accept the current docx/i);
@@ -229,6 +241,7 @@ describe("persisted workflow bookkeeping", () => {
       content,
       expect.stringMatching(/[\\/]exports$/u),
       ["pptx"],
+      expect.anything(),
       expect.objectContaining({ ensureDocx: false })
     );
     await expect(generateDocuments(projectDir, ["docx", "pdf"])).rejects.toThrow(/docx first/i);
@@ -252,6 +265,7 @@ describe("persisted workflow bookkeeping", () => {
     await updateCreatureSelection(projectDir, [creature]);
     await approveCreatureSelection(projectDir);
     await acceptBookContent(projectDir, content);
+    await seedIllustrations(projectDir);
     vi.mocked(exportSelectedFormats).mockResolvedValueOnce({
       records: [{ format: "docx", relativePath: "ocean-friends.docx", sha256: "a".repeat(64), bytes: 1024, createdAt: new Date().toISOString() }],
       failures: [{ format: "pdf", code: "pdf_font_missing", message: "Font missing." }]

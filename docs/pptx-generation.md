@@ -15,7 +15,7 @@ The deck contains exactly `1 + (3 × creature count)` slides. Slide 1 is the cov
 
 ## Editable layout and accessibility
 
-Slides use the 13.3 × 7.5 inch wide layout. Content slides place the creature and section text in the left column and a bordered illustration placeholder in the right column. The placeholder contains an editable illustration brief and editable alternative text. Object creation follows reading order: creature title, section label, body, placeholder, placeholder label, and slide number.
+Slides use the 13.3 × 7.5 inch wide layout. The cover embeds the approved cover artwork. Content slides place editable creature and section text in the left column and proportionally fitted approved artwork in the right column. Every creature's poem, fun-fact, and activity slides reference the same approved source digest. Alternative text is stored in DrawingML and is not rendered as a label. Object creation follows reading order: creature title, section label, body, artwork, and slide number.
 
 Text uses dark navy or ink on cream, and accent colors are never the only indication of section meaning. Generated decks include title, author, subject, creator, and language metadata. Future inserted images must carry the supplied alternative text; actual image, audio, video, chart, table, hyperlink, Markdown, and HTML insertion are outside this MVP.
 
@@ -38,6 +38,6 @@ Book language must match the requested language, and every poem, fact, and activ
 
 ## Verification
 
-`npm run test:pptx` generates and structurally inspects representative decks. It verifies slide counts and order, editable OOXML text, metadata, placeholder copy, fonts, and absence of unexpected media or shrink-to-fit instructions.
+`npm run test:pptx` generates and structurally inspects representative decks. It verifies slide counts and order, editable OOXML text, metadata, embedded media, alternative text, per-creature digest reuse, fonts, absence of forbidden production copy, and absence of shrink-to-fit instructions.
 
-`npm run qa:pptx:render` builds 1-, 5-, 11-, and 20-creature decks under the ignored `.pptx-qa` directory and uses LibreOffice plus Poppler, when installed, to render them for visual review. Review the cover and first, middle, and last creature triplets at full size, then scan the complete contact set for clipping, overlap, unexpected wrapping, missing glyphs, inconsistent placeholders, and slide-number discontinuities. Kannada should also be opened in Microsoft PowerPoint when available before production use.
+`npm run qa:pptx:render` builds 1-, 5-, 11-, and 20-creature decks under the ignored `.pptx-qa` directory and uses LibreOffice plus Poppler, when installed, to render them for visual review. Review the cover and first, middle, and last creature triplets at full size, then scan the complete contact set for clipping, distortion, overlap, unexpected wrapping, missing glyphs, asset substitution, forbidden labels, and slide-number discontinuities. Kannada should also be opened in Microsoft PowerPoint when available before production use.

@@ -9,6 +9,11 @@ import {
 } from "./domain.ts";
 import { checkCanvaReadiness, prepareCanvaHandoff, recordCanvaConsent, recordCanvaResult } from "./canva.ts";
 import { exportSelectedFormats } from "./exporters.ts";
+import {
+  importIllustration,
+  prepareIllustrationPrompts,
+  resolveApprovedIllustrations
+} from "./illustrations.ts";
 import { prepareAuthoringPrompts } from "./prompts.ts";
 import {
   createProject,
@@ -21,7 +26,7 @@ import { approveSelection, beginSelection } from "./selection.ts";
 import { validateBookContent } from "./validation.ts";
 
 type ProjectMutation = Partial<
-  Pick<BookProject, "stage" | "selection" | "contentGeneration" | "content" | "exports" | "exportFailures" | "canva" | "sourceRevision" | "reworksUsed" | "primaryOutput">
+  Pick<BookProject, "stage" | "selection" | "contentGeneration" | "content" | "illustrations" | "exports" | "exportFailures" | "canva" | "sourceRevision" | "reworksUsed" | "primaryOutput">
 >;
 
 const MAX_REWORKS = 2;
@@ -69,6 +74,7 @@ export async function updateCreatureSelection(
     selection,
     sourceRevision: project.sourceRevision + 1,
     content: undefined,
+    illustrations: [],
     primaryOutput: { status: "not_ready" },
     exportFailures: [],
     canva: { status: "not_checked" }
@@ -91,6 +97,67 @@ export async function createPromptPackage(projectDir: string) {
   await mkdir(promptDir, { recursive: true });
   await writeFile(path.join(promptDir, "authoring-prompt-package.json"), `${JSON.stringify(promptPackage, null, 2)}\n`, "utf8");
   return promptPackage;
+}
+
+export async function createIllustrationPromptPackage(projectDir: string) {
+  const project = await loadProject(projectDir);
+  if (!project.content) throw new Error("Validated book content is required before preparing illustration prompts.");
+  const validation = validateBookContent(project.content, project.selection.current, project.request);
+  if (!validation.report.valid) throw new Error("Book content has blocking validation errors.");
+  const promptPackage = prepareIllustrationPrompts(project.request, project.content);
+  const promptDir = resolveInside(projectDir, "prompts");
+  await mkdir(promptDir, { recursive: true });
+  await writeFile(path.join(promptDir, "illustration-prompt-package.json"), `${JSON.stringify(promptPackage, null, 2)}\n`, "utf8");
+  return promptPackage;
+}
+
+export async function importProjectIllustration(projectDir: string, input: unknown): Promise<BookProject> {
+  const project = await loadProject(projectDir);
+  if (!project.content) throw new Error("Validated book content is required before importing illustrations.");
+  const candidate = input as { role?: unknown; creatureId?: unknown };
+  if (candidate.role === "creature" && !project.content.creatures.some((creature) => creature.creatureId === candidate.creatureId)) {
+    throw new Error(`Creature ${String(candidate.creatureId)} is not part of the current book content.`);
+  }
+  const asset = await importIllustration(projectDir, input);
+  return persistMutation(projectDir, project, {
+    stage: "illustration_review_required",
+    sourceRevision: project.sourceRevision + 1,
+    illustrations: [...project.illustrations.filter((item) => item.assetId !== asset.assetId), asset],
+    primaryOutput: { status: "not_ready" },
+    exportFailures: [],
+    canva: { status: "not_checked" }
+  });
+}
+
+export async function reviewProjectIllustration(
+  projectDir: string,
+  assetId: string,
+  approved: boolean,
+  reviewedBy: string,
+  note?: string
+): Promise<BookProject> {
+  const project = await loadProject(projectDir);
+  const index = project.illustrations.findIndex((asset) => asset.assetId === assetId);
+  if (index < 0) throw new Error(`Illustration asset ${assetId} does not exist.`);
+  if (!reviewedBy.trim()) throw new Error("Illustration approval requires the reviewer's name or identifier.");
+  const illustrations = [...project.illustrations];
+  illustrations[index] = {
+    ...illustrations[index]!,
+    approvalStatus: approved ? "approved" : "rejected",
+    approvedAt: approved ? new Date().toISOString() : undefined,
+    approvedBy: approved ? reviewedBy.trim() : undefined,
+    approvalNote: note?.trim() || undefined
+  };
+  const requiredAssetIds = project.content ? ["cover", ...project.content.creatures.map((creature) => `creature-${creature.creatureId}`)] : [];
+  const allApproved = illustrations.length === requiredAssetIds.length && requiredAssetIds.every((requiredId) => illustrations.filter((asset) => asset.assetId === requiredId && asset.approvalStatus === "approved").length === 1);
+  return persistMutation(projectDir, project, {
+    stage: allApproved ? "illustrations_ready" : "illustration_review_required",
+    sourceRevision: project.sourceRevision + 1,
+    illustrations,
+    primaryOutput: { status: "not_ready" },
+    exportFailures: [],
+    canva: { status: "not_checked" }
+  });
 }
 
 export async function reiterateAuthoringPrompt(projectDir: string) {
@@ -167,7 +234,8 @@ export async function generateDocuments(
   }
   if (secondary.length > 0) requireAcceptedPrimary(project);
   const exportDir = resolveInside(projectDir, "exports");
-  const result = await exportSelectedFormats(content, exportDir, requested, {
+  const illustrations = await resolveApprovedIllustrations(projectDir, content, project.illustrations);
+  const result = await exportSelectedFormats(content, exportDir, requested, illustrations, {
     ageBand: content.effectiveAgeBand,
     language: project.request.language,
     ensureDocx: secondary.length === 0
@@ -229,7 +297,8 @@ export async function reworkPrimaryOutput(projectDir: string, contentInput: unkn
   if (!validation.report.valid || !validation.content) throw new Error("Reworked content has blocking validation errors.");
   const sourceRevision = project.sourceRevision + 1;
   const exportDir = resolveInside(projectDir, "exports");
-  const result = await exportSelectedFormats(validation.content, exportDir, ["docx"], {
+  const illustrations = await resolveApprovedIllustrations(projectDir, validation.content, project.illustrations);
+  const result = await exportSelectedFormats(validation.content, exportDir, ["docx"], illustrations, {
     ageBand: validation.content.effectiveAgeBand,
     language: project.request.language
   });
@@ -322,7 +391,8 @@ export async function getCanvaHandoff(projectDir: string) {
   const project = await loadProject(projectDir);
   if (!project.content) throw new Error("Validated content is required.");
   requireAcceptedPrimary(project);
-  return prepareCanvaHandoff(project.projectId, project.revision, project.request, project.content, project.canva);
+  await resolveApprovedIllustrations(projectDir, project.content, project.illustrations);
+  return prepareCanvaHandoff(project.projectId, project.revision, project.request, project.content, project.illustrations, project.canva);
 }
 
 export async function acceptCanvaResult(projectDir: string, result: unknown): Promise<BookProject> {
@@ -386,6 +456,12 @@ export function deliverySummary(project: BookProject) {
     generationAttempt: project.contentGeneration.currentAttempt,
     languageReviewRequired: project.request.language === "kn",
     review: {
+      illustrations: {
+        required: project.content ? 1 + project.content.creatures.length : 0,
+        imported: project.illustrations.length,
+        approved: project.illustrations.filter((asset) => asset.approvalStatus === "approved").length,
+        status: !project.content ? "not_available" : project.illustrations.length === 1 + project.content.creatures.length && ["cover", ...project.content.creatures.map((creature) => `creature-${creature.creatureId}`)].every((requiredId) => project.illustrations.filter((asset) => asset.assetId === requiredId && asset.approvalStatus === "approved").length === 1) ? "complete" : "required"
+      },
       language: {
         status: project.request.language === "kn" ? "required" : "not_required"
       },

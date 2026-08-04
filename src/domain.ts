@@ -16,7 +16,12 @@ export const LIMITS = {
   maxAltTextCharacters: 300,
   maxClosingNoteCharacters: 240,
   maxSectionWords: 250,
-  maxTotalWords: 25_000
+  maxTotalWords: 25_000,
+  maxIllustrationBytes: 15 * 1024 * 1024,
+  maxIllustrationSetBytes: 80 * 1024 * 1024,
+  maxIllustrationDimension: 20_000,
+  minIllustrationLongEdge: 600,
+  minIllustrationShortEdge: 350
 } as const;
 
 export const PPTX_AGE_PROFILES = {
@@ -120,6 +125,57 @@ export const creatureContentSchema = z.object({
   altText: z.string().min(1).max(LIMITS.maxAltTextCharacters)
 });
 
+export const illustrationMimeTypeSchema = z.enum(["image/png", "image/jpeg"]);
+export const illustrationRoleSchema = z.enum(["cover", "creature"]);
+export const illustrationAssetSchema = z.object({
+  assetId: z.string().min(1).max(160),
+  role: illustrationRoleSchema,
+  creatureId: z.string().min(1).max(120).optional(),
+  approvalStatus: z.enum(["pending_review", "approved", "rejected"]),
+  relativePath: z.string().min(1),
+  mimeType: illustrationMimeTypeSchema,
+  width: z.number().int().positive().max(LIMITS.maxIllustrationDimension),
+  height: z.number().int().positive().max(LIMITS.maxIllustrationDimension),
+  bytes: z.number().int().positive().max(LIMITS.maxIllustrationBytes),
+  sha256: z.string().regex(/^[a-f0-9]{64}$/u),
+  altText: z.string().trim().min(1).max(LIMITS.maxAltTextCharacters),
+  source: z.enum(["host_generated", "user_supplied"]),
+  provenance: z.object({
+    importedAt: z.string().datetime(),
+    createdBy: z.string().trim().min(1).max(200).optional(),
+    generator: z.string().trim().min(1).max(200).optional(),
+    model: z.string().trim().min(1).max(200).optional(),
+    sourceUri: z.string().url().optional(),
+    promptDigest: z.string().regex(/^[a-f0-9]{64}$/u).optional(),
+    notes: z.string().trim().min(1).max(1_000).optional()
+  }),
+  license: z.object({
+    name: z.string().trim().min(1).max(200),
+    url: z.string().url().optional(),
+    attribution: z.string().trim().min(1).max(500).optional(),
+    usageNotes: z.string().trim().min(1).max(1_000).optional()
+  }),
+  approvedAt: z.string().datetime().optional(),
+  approvedBy: z.string().trim().min(1).max(200).optional(),
+  approvalNote: z.string().trim().min(1).max(1_000).optional()
+}).superRefine((asset, context) => {
+  if (asset.role === "cover" && asset.creatureId) {
+    context.addIssue({ code: z.ZodIssueCode.custom, path: ["creatureId"], message: "Cover artwork must not identify a creature slot." });
+  }
+  if (asset.role === "creature" && !asset.creatureId) {
+    context.addIssue({ code: z.ZodIssueCode.custom, path: ["creatureId"], message: "Creature artwork must identify its creature slot." });
+  }
+  if (asset.role === "cover" && asset.assetId !== "cover") {
+    context.addIssue({ code: z.ZodIssueCode.custom, path: ["assetId"], message: "Cover artwork must use the cover asset slot." });
+  }
+  if (asset.role === "creature" && asset.creatureId && asset.assetId !== `creature-${asset.creatureId}`) {
+    context.addIssue({ code: z.ZodIssueCode.custom, path: ["assetId"], message: "Creature artwork assetId must match its creature slot." });
+  }
+  if (asset.approvalStatus === "approved" && (!asset.approvedAt || !asset.approvedBy)) {
+    context.addIssue({ code: z.ZodIssueCode.custom, path: ["approvalStatus"], message: "Approved artwork requires approval time and reviewer." });
+  }
+});
+
 export const bookContentSchema = z.object({
   schemaVersion: z.literal("1.1"),
   title: z.string().min(1),
@@ -150,6 +206,7 @@ export type BookRequest = z.infer<typeof bookRequestSchema>;
 export type Creature = z.infer<typeof creatureSchema>;
 export type BookContent = z.infer<typeof bookContentSchema>;
 export type SelectionState = z.infer<typeof selectionStateSchema>;
+export type IllustrationAsset = z.infer<typeof illustrationAssetSchema>;
 
 export function projectedPageCount(content: Pick<BookContent, "creatures" | "closingNote">): number {
   return 1 + content.creatures.length * 3 + (content.closingNote?.trim() ? 1 : 0);

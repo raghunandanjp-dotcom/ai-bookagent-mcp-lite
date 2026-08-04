@@ -5,7 +5,7 @@ import {
   recordCanvaConsent,
   recordCanvaResult
 } from "../src/canva.ts";
-import type { BookContent, BookRequest } from "../src/domain.ts";
+import type { BookContent, BookRequest, IllustrationAsset } from "../src/domain.ts";
 import type { CanvaState } from "../src/project.ts";
 
 const request = {
@@ -47,6 +47,12 @@ const consented: CanvaState = {
   }
 };
 
+const approvedAt = "2026-08-03T09:58:00.000Z";
+const illustrations: IllustrationAsset[] = [
+  { assetId: "cover", role: "cover", approvalStatus: "approved", relativePath: "assets/illustrations/cover.png", mimeType: "image/png", width: 1200, height: 800, bytes: 1024, sha256: "a".repeat(64), altText: "Ocean creatures together.", source: "host_generated", provenance: { importedAt: approvedAt, generator: "Host image tool" }, license: { name: "Project use approved" }, approvedAt, approvedBy: "Reviewer" },
+  { assetId: "creature-octopus", role: "creature", creatureId: "octopus", approvalStatus: "approved", relativePath: "assets/illustrations/creature-octopus.png", mimeType: "image/png", width: 1200, height: 800, bytes: 1024, sha256: "b".repeat(64), altText: "A smiling octopus with eight arms.", source: "host_generated", provenance: { importedAt: approvedAt, generator: "Host image tool" }, license: { name: "Project use approved" }, approvedAt, approvedBy: "Reviewer" }
+];
+
 describe("Canva readiness and handoff contract", () => {
   it("distinguishes unavailable, authorization-required, and ready states", () => {
     expect(checkCanvaReadiness({ status: "unavailable" })).toMatchObject({ status: "setup_required", readiness: "unavailable" });
@@ -69,19 +75,25 @@ describe("Canva readiness and handoff contract", () => {
   });
 
   it("returns an adapter-neutral, correlated payload and supports retry", () => {
-    const payload = prepareCanvaHandoff("project-1", 9, request, content, consented);
+    const payload = prepareCanvaHandoff("project-1", 9, request, content, illustrations, consented);
     expect(payload).toMatchObject({
-      handoffVersion: "1.0",
+      handoffVersion: "1.1",
       operation: "create_editable_design",
       correlation: { projectId: "project-1", revision: 9 },
       selectedDesign: { designId: "template-1" }
     });
+    expect(payload.illustrations.map((asset) => asset.sha256)).toEqual(["a".repeat(64), "b".repeat(64)]);
+    expect(payload.pages).toEqual(expect.arrayContaining([
+      expect.objectContaining({ type: "cover", illustrationAssetId: "cover" }),
+      expect.objectContaining({ type: "poem", illustrationAssetId: "creature-octopus" })
+    ]));
+    expect(JSON.stringify(payload.pages)).not.toMatch(/illustrationBrief|Illustration brief|Alternative text/iu);
     const retryState: CanvaState = {
       ...consented,
       status: "failed",
       failure: { code: "timeout", message: "Timed out", retryable: true, failedAt: "2026-08-03T10:01:00.000Z" }
     };
-    expect(() => prepareCanvaHandoff("project-1", 10, request, content, retryState)).not.toThrow();
+    expect(() => prepareCanvaHandoff("project-1", 10, request, content, illustrations, retryState)).not.toThrow();
   });
 
   it("preserves Kannada as editable text with localized titles and explicit font/review requirements", () => {
@@ -96,7 +108,7 @@ describe("Canva readiness and handoff contract", () => {
     kannadaContent.creatures[0]!.activity.text = "ಎಂಟು ಕೈಗಳ ಚಿತ್ರ ಬಿಡಿಸಿ.";
     for (const section of [kannadaContent.creatures[0]!.poem, kannadaContent.creatures[0]!.funFact, kannadaContent.creatures[0]!.activity]) section.language = "kn";
 
-    const payload = prepareCanvaHandoff("project-1", 9, kannadaRequest, kannadaContent, consented);
+    const payload = prepareCanvaHandoff("project-1", 9, kannadaRequest, kannadaContent, illustrations, consented);
     expect(payload).toMatchObject({
       language: "kn",
       locale: "kn-IN",
@@ -110,7 +122,7 @@ describe("Canva readiness and handoff contract", () => {
   });
 
   it("rejects handoff without consent", () => {
-    expect(() => prepareCanvaHandoff("project-1", 9, request, content, { ...consented, status: "declined" })).toThrow(/consent/i);
+    expect(() => prepareCanvaHandoff("project-1", 9, request, content, illustrations, { ...consented, status: "declined" })).toThrow(/consent/i);
   });
 });
 

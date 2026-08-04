@@ -22,11 +22,23 @@ Produces at most two further prompt packages without another user choice. Iterat
 
 ## `validate_book_content`
 
-Validates schema, approved-creature coverage, duplicates, unexpected creatures, poem title/age/stanza/line/rhyme declarations, adjacent stanza repetition, requested and section language, each generated Kannada reader-facing field, mixed script, age-band DOCX and PPTX overflow limits, projected pages, total words, and review flags. User prompts, illustration briefs, and alt text may remain in English. Presentation overflow is blocking rather than silently shrunk or paginated.
+Validates schema, approved-creature coverage, duplicates, unexpected creatures, poem title/age/stanza/line/rhyme declarations, adjacent stanza repetition, requested and section language, each generated Kannada reader-facing field, mixed script, age-band DOCX and PPTX overflow limits, projected pages, total words, and review flags. User prompts and illustration briefs may remain in English as production metadata, but exporters never render them. Presentation overflow is blocking rather than silently shrunk or paginated.
+
+## `prepare_illustration_prompts`
+
+Creates a project-local prompt package with a single shared art direction, one cover prompt, and one prompt per selected creature. This is host-assisted and provider-neutral: the MCP does not call or require a paid image-generation API.
+
+## `import_illustration_asset`
+
+Imports either host-generated or user-supplied PNG/JPEG artwork into `assets/illustrations`. It identifies the required cover or creature slot and persists signature-derived MIME type and dimensions, byte count, SHA-256 digest, alternative text, source, provenance, and licensing data. Files larger than 15 MiB, unsupported/corrupt files, dimensions above 20,000 pixels, or images below the print-fit minimum of 600 pixels on the long edge and 350 pixels on the short edge are rejected. Import does not imply approval.
+
+## `review_illustration_asset`
+
+Approves or rejects one imported asset and records the reviewer, time, and optional note. Re-importing a slot replaces its manifest record and returns it to pending review. Exactly one approved cover and one approved asset per current creature are required for export.
 
 ## `create_document_exports`
 
-Creates DOCX by default. The primary DOCX is mandatory and must be accepted before PPTX or PDF can be created independently for the same source revision. All file locations remain inside the book-project directory. The underlying batch exporter still guarantees DOCX-first generation by default; the workflow disables that implicit regeneration only after the checksum-bound primary DOCX has already been accepted.
+Creates DOCX by default. Before writing anything, it revalidates the complete approved illustration set from disk, including file signature, MIME type, dimensions, byte count, digest, required slots, unexpected slots, approval state, and the 80 MiB set limit. The primary DOCX is mandatory and must be accepted before PPTX or PDF can be created independently for the same source revision. All file locations remain inside the book-project directory. The underlying batch exporter still guarantees DOCX-first generation by default; the workflow disables that implicit regeneration only after the checksum-bound primary DOCX has already been accepted.
 
 ## `accept_primary_output`
 
@@ -44,7 +56,7 @@ The DOCX logical page count is:
 1 cover + (3 × approved creatures) + 1 when closingNote is non-empty
 ```
 
-The three creature pages are always poem, fun fact, and activity in that order. Each begins at an explicit page boundary, includes a deterministic illustration placeholder with both the illustration brief and accessible description, and uses typography selected from `effectiveAgeBand`. DOCX-specific overflow-risk errors are blocking; content is never truncated or silently shrunk.
+The three creature pages are always poem, fun fact, and activity in that order. Each begins at an explicit page boundary, embeds the same approved creature artwork with proportional fitting and non-visible alternative text, and uses typography selected from `effectiveAgeBand`. The cover embeds the separately approved cover asset. DOCX-specific overflow-risk errors are blocking; content is never truncated or silently shrunk.
 
 DOCX fun-fact and activity budgets are 70 words for ages 3–5, 100 for 6–8, 140 for 9–11, and 180 for 12–14. Illustration briefs are limited to 60 words, accessible descriptions to 40 words, and closing notes to 120 words. These conservative preflight limits control overflow risk across compatible local renderers; a reference render remains the release gate when LibreOffice is available.
 
@@ -52,7 +64,7 @@ DOCX generation uses only local libraries. LibreOffice and Poppler are optional 
 
 Optional-format failures preserve successful artifacts and produce a `partially_complete` project with structured `exportFailures`; mandatory DOCX failure remains blocking. PDF follows the deterministic local specification in [MVP PDF generation](pdf-generation.md).
 
-PPTX uses a deterministic cover plus poem, fun-fact, and activity slide per creature. It preserves editable text and placeholders. Kannada PPTX records a warning because `Noto Sans Kannada` is referenced but not embedded.
+PPTX uses a deterministic illustrated cover plus poem, fun-fact, and activity slide per creature. It preserves editable book text and stores image alternative text in DrawingML. Kannada PPTX records a warning because `Noto Sans Kannada` is referenced but not embedded.
 
 ## `check_canva_readiness`
 

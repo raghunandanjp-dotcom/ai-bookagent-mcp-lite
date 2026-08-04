@@ -2,7 +2,7 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
-import { creatureSchema, interactiveBookRequestSchema } from "./domain.ts";
+import { creatureSchema, interactiveBookRequestSchema, illustrationRoleSchema } from "./domain.ts";
 import {
   acceptBookContent,
   acceptPrimaryOutput,
@@ -10,12 +10,15 @@ import {
   approveCreatureSelection,
   consentToCanva,
   createPromptPackage,
+  createIllustrationPromptPackage,
   deliverySummary,
   generateDocuments,
   getCanvaHandoff,
   initializeProject,
+  importProjectIllustration,
   reworkPrimaryOutput,
   replaceCreatureContent,
+  reviewProjectIllustration,
   selectCanvaDesign,
   reiterateAuthoringPrompt,
   setCanvaCapability,
@@ -83,6 +86,60 @@ server.registerTool(
     inputSchema: { projectDir: z.string().min(1) }
   },
   async ({ projectDir }) => text(await createPromptPackage(projectDir))
+);
+
+server.registerTool(
+  "prepare_illustration_prompts",
+  {
+    description: "Prepare a host-assisted prompt package for one cover and one consistent illustration per creature. This connector does not require a paid image API.",
+    inputSchema: { projectDir: z.string().min(1) }
+  },
+  async ({ projectDir }) => text(await createIllustrationPromptPackage(projectDir))
+);
+
+server.registerTool(
+  "import_illustration_asset",
+  {
+    description: "Copy a host-generated or user-supplied PNG/JPEG into the project with dimensions, digest, accessibility, provenance, and license metadata. Imported artwork remains pending review.",
+    inputSchema: {
+      projectDir: z.string().min(1),
+      role: illustrationRoleSchema,
+      creatureId: z.string().min(1).optional(),
+      sourcePath: z.string().min(1),
+      altText: z.string().min(1),
+      source: z.enum(["host_generated", "user_supplied"]),
+      provenance: z.object({
+        createdBy: z.string().min(1).optional(),
+        generator: z.string().min(1).optional(),
+        model: z.string().min(1).optional(),
+        sourceUri: z.string().url().optional(),
+        promptDigest: z.string().regex(/^[a-f0-9]{64}$/u).optional(),
+        notes: z.string().min(1).optional()
+      }).default({}),
+      license: z.object({
+        name: z.string().min(1),
+        url: z.string().url().optional(),
+        attribution: z.string().min(1).optional(),
+        usageNotes: z.string().min(1).optional()
+      })
+    }
+  },
+  async ({ projectDir, ...input }) => text(await importProjectIllustration(projectDir, input))
+);
+
+server.registerTool(
+  "review_illustration_asset",
+  {
+    description: "Approve or reject one imported illustration. Every required slot must be approved before final export.",
+    inputSchema: {
+      projectDir: z.string().min(1),
+      assetId: z.string().min(1),
+      approved: z.boolean(),
+      reviewedBy: z.string().min(1),
+      note: z.string().min(1).optional()
+    }
+  },
+  async ({ projectDir, assetId, approved, reviewedBy, note }) => text(await reviewProjectIllustration(projectDir, assetId, approved, reviewedBy, note))
 );
 
 server.registerTool(

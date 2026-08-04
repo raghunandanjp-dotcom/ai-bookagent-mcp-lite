@@ -2,6 +2,7 @@ import { spawnSync } from "node:child_process";
 import { mkdir, readdir, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
+import { createQaIllustrations } from "./qa-illustrations.mjs";
 
 const root = process.cwd();
 const outputRoot = path.join(root, ".pdf-qa");
@@ -44,7 +45,9 @@ const manifest = [];
 for (const count of [1, 5, 11, 20]) {
   const directory = path.join(outputRoot, `${count}-creatures`);
   await mkdir(directory, { recursive: true });
-  const record = await exportPdf(fixture(count), directory);
+  const content = fixture(count);
+  const illustrations = await createQaIllustrations(directory, content.creatures.map((creature) => creature.creatureId));
+  const record = await exportPdf(content, directory, illustrations);
   const pdfPath = path.join(directory, record.relativePath);
   const expectedPages = 1 + count * 3;
   if (canRender) {

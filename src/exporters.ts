@@ -1,17 +1,16 @@
 import { createWriteStream } from "node:fs";
-import { access, mkdir, rename, rm, stat, writeFile } from "node:fs/promises";
+import { access, mkdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   AlignmentType,
-  BorderStyle,
   Document,
   Footer,
   HeadingLevel,
+  ImageRun,
   PageNumber,
   Packer,
   Paragraph,
-  ShadingType,
   TextRun,
   type IRunOptions
 } from "docx";
@@ -21,6 +20,7 @@ import { createRequire } from "node:module";
 import { DOCX_TYPOGRAPHY_BY_AGE, PPTX_AGE_PROFILES, type BookContent, type BookRequest } from "./domain.ts";
 import { fileDigest, safeOutputName, type ExportFailure, type ExportRecord } from "./project.ts";
 import { normalizePoemText } from "./poems.ts";
+import type { ApprovedIllustrationSet, ResolvedIllustrationAsset } from "./illustrations.ts";
 
 const require = createRequire(import.meta.url);
 const PptxGenJS = require("pptxgenjs") as typeof import("pptxgenjs").default;
@@ -84,18 +84,40 @@ function pageHeading(content: BookContent, creatureName: string, section: string
   ];
 }
 
-function illustrationPlaceholder(content: BookContent, brief: string, altText: string): Paragraph {
-  const border = { style: BorderStyle.SINGLE, size: 8, color: "9BC8D1", space: 8 };
-  return new Paragraph({
-    spacing: { before: 300, after: 120, line: 280 },
-    border: { top: border, right: border, bottom: border, left: border },
-    shading: { type: ShadingType.CLEAR, fill: "E9F3F5", color: "auto" },
-    children: [
-      run("Illustration placeholder", content, { bold: true, size: 24, color: COLORS.teal }),
-      run(`\nIllustration direction: ${brief}`, content, { size: 22, color: "42525C" }),
-      run(`\nAccessible description: ${altText}`, content, { size: 22, color: COLORS.ink })
-    ]
+function fittedSize(asset: ResolvedIllustrationAsset, maxWidth: number, maxHeight: number) {
+  const scale = Math.min(maxWidth / asset.width, maxHeight / asset.height);
+  return { width: Math.round(asset.width * scale), height: Math.round(asset.height * scale) };
+}
+
+function docxImage(asset: ResolvedIllustrationAsset, data: Buffer, maxWidth: number, maxHeight: number): ImageRun {
+  const transformation = fittedSize(asset, maxWidth, maxHeight);
+  return new ImageRun({
+    type: asset.mimeType === "image/png" ? "png" : "jpg",
+    data,
+    transformation,
+    altText: { title: asset.role === "cover" ? "Cover illustration" : "Creature illustration", description: asset.altText, name: asset.assetId }
   });
+}
+
+function illustrationParagraph(asset: ResolvedIllustrationAsset, data: Buffer, maxWidth = 480, maxHeight = 300): Paragraph {
+  return new Paragraph({
+    alignment: AlignmentType.CENTER,
+    spacing: { before: 220, after: 120 },
+    children: [docxImage(asset, data, maxWidth, maxHeight)]
+  });
+}
+
+function taggedPdfImage(
+  pdf: PDFKit.PDFDocument,
+  asset: ResolvedIllustrationAsset,
+  x: number,
+  y: number,
+  options: PDFKit.Mixins.ImageOption
+): void {
+  const content = pdf.markStructureContent("Figure", { alt: asset.altText });
+  pdf.image(asset.absolutePath, x, y, options);
+  pdf.endMarkedContent();
+  pdf.addStructure(pdf.struct("Figure", { alt: asset.altText }, [content]));
 }
 
 function poemParagraphs(content: BookContent, text: string): Paragraph[] {
@@ -123,8 +145,10 @@ function reviewNotice(content: BookContent, status: BookContent["creatures"][num
   return [new Paragraph({ spacing: { before: 160, after: 80 }, children: [run(message, content, { italics: true, size: 20, color: "5C6770" })] })];
 }
 
-function docxChildren(content: BookContent): Paragraph[] {
+async function docxChildren(content: BookContent, illustrations: ApprovedIllustrationSet): Promise<Paragraph[]> {
   const font = documentFont(content.language);
+  const imageData = new Map<string, Buffer>();
+  for (const asset of [illustrations.cover, ...illustrations.creatures.values()]) imageData.set(asset.assetId, await readFile(asset.absolutePath));
   const children: Paragraph[] = [
     new Paragraph({
       alignment: AlignmentType.CENTER,
@@ -133,9 +157,10 @@ function docxChildren(content: BookContent): Paragraph[] {
     }),
     new Paragraph({
       alignment: AlignmentType.CENTER,
-      spacing: { after: 720 },
+      spacing: { after: 260 },
       children: [new TextRun({ text: "A creature poetry, facts, and activities book", size: 28, color: COLORS.teal, font })]
     }),
+    illustrationParagraph(illustrations.cover, imageData.get(illustrations.cover.assetId)!, 540, 430),
     new Paragraph({
       alignment: AlignmentType.CENTER,
       children: [new TextRun({ text: `Ages ${content.effectiveAgeBand} · ${content.language === "kn" ? "Kannada (experimental)" : "English"} · ${content.creatures.length} creatures`, size: 24, color: COLORS.ink, font })]
@@ -143,6 +168,8 @@ function docxChildren(content: BookContent): Paragraph[] {
   ];
 
   for (const creature of content.creatures) {
+    const asset = illustrations.creatures.get(creature.creatureId)!;
+    const data = imageData.get(asset.assetId)!;
     children.push(...pageHeading(content, creature.displayName, "Poem"));
     children.push(new Paragraph({
       heading: HeadingLevel.HEADING_3,
@@ -152,17 +179,17 @@ function docxChildren(content: BookContent): Paragraph[] {
     }));
     children.push(...poemParagraphs(content, creature.poem.text));
     children.push(...reviewNotice(content, creature.poem.reviewStatus));
-    children.push(illustrationPlaceholder(content, creature.illustrationBrief, creature.altText));
+    children.push(illustrationParagraph(asset, data));
 
     children.push(...pageHeading(content, creature.displayName, "Fun Fact"));
     children.push(bodyParagraph(content, creature.funFact.text));
     children.push(...reviewNotice(content, creature.funFact.reviewStatus));
-    children.push(illustrationPlaceholder(content, creature.illustrationBrief, creature.altText));
+    children.push(illustrationParagraph(asset, data));
 
     children.push(...pageHeading(content, creature.displayName, "Activity"));
     children.push(bodyParagraph(content, creature.activity.text));
     children.push(...reviewNotice(content, creature.activity.reviewStatus));
-    children.push(illustrationPlaceholder(content, creature.illustrationBrief, creature.altText));
+    children.push(illustrationParagraph(asset, data));
   }
   if (content.closingNote) {
     children.push(new Paragraph({ pageBreakBefore: true, heading: HeadingLevel.HEADING_1, alignment: AlignmentType.CENTER, children: [run("A final note", content, { bold: true, size: 48, color: COLORS.navy })] }));
@@ -171,7 +198,7 @@ function docxChildren(content: BookContent): Paragraph[] {
   return children;
 }
 
-export async function exportDocx(content: BookContent, exportDir: string): Promise<ExportRecord> {
+export async function exportDocx(content: BookContent, exportDir: string, illustrations: ApprovedIllustrationSet): Promise<ExportRecord> {
   await mkdir(exportDir, { recursive: true });
   const filename = `${safeOutputName(content.title)}.docx`;
   const outputPath = path.join(exportDir, filename);
@@ -203,7 +230,7 @@ export async function exportDocx(content: BookContent, exportDir: string): Promi
           })]
         })
       },
-      children: docxChildren(content)
+      children: await docxChildren(content, illustrations)
     }]
   });
   try {
@@ -228,6 +255,7 @@ export async function exportDocx(content: BookContent, exportDir: string): Promi
 export async function exportPptx(
   content: BookContent,
   exportDir: string,
+  illustrations: ApprovedIllustrationSet,
   context: Pick<BookRequest, "ageBand" | "language"> = { ageBand: content.effectiveAgeBand, language: content.language }
 ): Promise<ExportRecord> {
   await mkdir(exportDir, { recursive: true });
@@ -251,12 +279,15 @@ export async function exportPptx(
 
   const cover = pptx.addSlide();
   cover.background = { color: COLORS.cream };
-  cover.addText(content.title, { x: 0.8, y: 2.1, w: 11.7, h: 1.15, fontFace: font, fontSize: 52, lang: languageTag, bold: true, align: "center", color: COLORS.navy, margin: 0.05 });
-  cover.addText(`${content.creatures.length} wonderful creatures`, { x: 1.5, y: 3.45, w: 10.3, h: 0.5, fontFace: font, fontSize: 20, lang: languageTag, align: "center", color: COLORS.teal, margin: 0.02 });
-  if (content.closingNote) cover.addText(content.closingNote, { x: 1.2, y: 6.45, w: 10.9, h: 0.45, fontFace: font, fontSize: 16, lang: languageTag, align: "center", color: "5C6770", margin: 0.02 });
+  cover.addText(content.title, { x: 0.8, y: 0.35, w: 11.7, h: 0.8, fontFace: font, fontSize: 48, lang: languageTag, bold: true, align: "center", color: COLORS.navy, margin: 0.05 });
+  const coverSize = fittedSize(illustrations.cover, 8.9 * 96, 4.75 * 96);
+  cover.addImage({ path: illustrations.cover.absolutePath, x: 6.65 - coverSize.width / 192, y: 1.35, w: coverSize.width / 96, h: coverSize.height / 96, altText: illustrations.cover.altText });
+  cover.addText(`${content.creatures.length} wonderful creatures`, { x: 1.5, y: 6.15, w: 10.3, h: 0.4, fontFace: font, fontSize: 20, lang: languageTag, align: "center", color: COLORS.teal, margin: 0.02 });
+  if (content.closingNote) cover.addText(content.closingNote, { x: 1.2, y: 6.68, w: 10.9, h: 0.38, fontFace: font, fontSize: 16, lang: languageTag, align: "center", color: "5C6770", margin: 0.02 });
 
   let slideNumber = 1;
   for (const creature of content.creatures) {
+    const asset = illustrations.creatures.get(creature.creatureId)!;
     for (const key of ["poem", "funFact", "activity"] as const) {
       const slide = pptx.addSlide();
       slideNumber += 1;
@@ -265,8 +296,8 @@ export async function exportPptx(
       slide.addText(sectionTitle(key), { x: 0.72, y: 1.17, w: 3.0, h: 0.45, fontFace: font, fontSize: profile.sectionTitleFontSize, lang: languageTag, bold: true, color: key === "funFact" ? COLORS.coral : COLORS.teal, margin: 0.02 });
       const body = key === "poem" ? `${creature.poem.title}\n\n${normalizePoemText(creature.poem.text)}` : creature[key].text;
       slide.addText(body, { x: 0.8, y: 1.8, w: 7.3, h: 4.7, fontFace: font, fontSize: bodyFontSize, lang: languageTag, color: COLORS.ink, breakLine: false, valign: "middle", margin: 0.12 });
-      slide.addText(`Illustration brief:\n${creature.illustrationBrief}\n\nAlternative text:\n${creature.altText}`, { x: 8.55, y: 1.8, w: 3.9, h: 3.55, fontFace: font, fontSize: 16, lang: languageTag, color: "35434D", align: "left", valign: "middle", margin: 0.18, fill: { color: "E9F3F5" }, line: { color: "6B9FAA", width: 1.5 } });
-      slide.addText("Illustration placeholder", { x: 8.8, y: 5.05, w: 3.4, h: 0.35, fontFace: font, fontSize: 12, lang: languageTag, color: "68737D", align: "center", margin: 0.01 });
+      const imageSize = fittedSize(asset, 3.9 * 96, 4.75 * 96);
+      slide.addImage({ path: asset.absolutePath, x: 10.5 - imageSize.width / 192, y: 1.65 + (4.75 - imageSize.height / 96) / 2, w: imageSize.width / 96, h: imageSize.height / 96, altText: asset.altText });
       slide.addText(String(slideNumber), { x: 12.25, y: 7.02, w: 0.35, h: 0.2, fontFace: font, fontSize: 10, lang: languageTag, color: "68737D", align: "right", margin: 0 });
     }
   }
@@ -275,7 +306,7 @@ export async function exportPptx(
   return { format: "pptx", relativePath: filename, ...digest, createdAt: new Date().toISOString(), ...(content.language === "kn" ? { warnings: ["Kannada PPTX output requires Noto Sans Kannada on viewing and editing systems; the font is not embedded."] } : {}) };
 }
 
-export async function exportPdf(content: BookContent, exportDir: string): Promise<ExportRecord> {
+export async function exportPdf(content: BookContent, exportDir: string, illustrations: ApprovedIllustrationSet): Promise<ExportRecord> {
   const { default: PDFDocument } = await import("pdfkit");
   await mkdir(exportDir, { recursive: true });
   const filename = `${safeOutputName(content.title)}.pdf`;
@@ -296,6 +327,8 @@ export async function exportPdf(content: BookContent, exportDir: string): Promis
     const pdf = new PDFDocument({
       size: "A4",
       autoFirstPage: false,
+      tagged: true,
+      lang: documentLanguage(content.language),
       margins: { top: PDF.margin, right: PDF.margin, bottom: PDF.margin, left: PDF.margin },
       info: { Title: content.title, Author: "AI Book Agent MCP Lite", Subject: "Children's creature poetry activity book", Creator: "AI Book Agent MCP Lite" }
     });
@@ -304,7 +337,7 @@ export async function exportPdf(content: BookContent, exportDir: string): Promis
       pdf.registerFont("BookBold", boldFont!);
       pdf.font("BookRegular");
       if (content.language === "kn") {
-        const usedText = [content.title, ...content.creatures.flatMap((creature) => [creature.displayName, creature.poem.title, creature.poem.text, creature.funFact.text, creature.activity.text, creature.illustrationBrief])].join("\n");
+        const usedText = [content.title, ...content.creatures.flatMap((creature) => [creature.displayName, creature.poem.title, creature.poem.text, creature.funFact.text, creature.activity.text])].join("\n");
         const internalFont = (pdf as unknown as { _font?: { font?: { layout(value: string): { glyphs: Array<{ id: number }> } } } })._font?.font;
         if (internalFont?.layout(usedText).glyphs.some((glyph) => glyph.id === 0)) throw new PdfExportError("pdf_glyph_missing", "The configured Kannada font does not cover every character used by this book.");
       }
@@ -326,10 +359,12 @@ export async function exportPdf(content: BookContent, exportDir: string): Promis
       pdf.font("BookRegular").fillColor("#68737D").fontSize(9).text(`${content.title} · Page ${pageNumber} of ${totalPages}`, PDF.margin, pdf.page.height - PDF.margin - 12, { width: pdf.page.width - 2 * PDF.margin, height: 12, align: "center", lineBreak: false });
     };
     addPage(1);
-    pdf.font("BookBold").fillColor(`#${COLORS.navy}`).fontSize(30).text(content.title, PDF.margin, 220, { width: pdf.page.width - 2 * PDF.margin, align: "center" });
-    pdf.moveDown().font("BookRegular").fillColor(`#${COLORS.teal}`).fontSize(16).text(`${content.creatures.length} wonderful creatures`, { align: "center" });
+    pdf.font("BookBold").fillColor(`#${COLORS.navy}`).fontSize(30).text(content.title, PDF.margin, 70, { width: pdf.page.width - 2 * PDF.margin, align: "center" });
+    taggedPdfImage(pdf, illustrations.cover, PDF.margin, 145, { fit: [pdf.page.width - 2 * PDF.margin, 480], align: "center", valign: "center" });
+    pdf.font("BookRegular").fillColor(`#${COLORS.teal}`).fontSize(16).text(`${content.creatures.length} wonderful creatures`, PDF.margin, 665, { width: pdf.page.width - 2 * PDF.margin, align: "center" });
     let pageNumber = 1;
     for (const creature of content.creatures) {
+      const asset = illustrations.creatures.get(creature.creatureId)!;
       for (const key of ["poem", "funFact", "activity"] as const) {
         pageNumber += 1;
         const label = sectionTitle(key);
@@ -340,7 +375,7 @@ export async function exportPdf(content: BookContent, exportDir: string): Promis
         const body = key === "poem" ? normalizePoemText(creature.poem.text) : creature[key].text;
         const bodyY = pdf.y + 10;
         const bodyWidth = pdf.page.width - 2 * PDF.margin;
-        const illustrationHeight = key === "activity" ? 76 : 0;
+        const illustrationHeight = 300;
         const availableHeight = pdf.page.height - PDF.margin - PDF.footerHeight - bodyY - illustrationHeight;
         pdf.font("BookRegular").fontSize(PDF.bodyFontSize);
         const measuredHeight = pdf.heightOfString(body, { width: bodyWidth, lineGap: PDF.bodyLineGap });
@@ -349,9 +384,7 @@ export async function exportPdf(content: BookContent, exportDir: string): Promis
           return;
         }
         pdf.fillColor(`#${COLORS.ink}`).text(body, PDF.margin, bodyY, { width: bodyWidth, height: availableHeight, lineGap: PDF.bodyLineGap });
-        if (key === "activity") {
-          pdf.font("BookRegular").fillColor("#5C6770").fontSize(10).text(`Illustration idea: ${creature.illustrationBrief}\nAlt text: ${creature.altText}`, PDF.margin, pdf.page.height - PDF.margin - PDF.footerHeight - 58, { width: bodyWidth, height: 58 });
-        }
+        taggedPdfImage(pdf, asset, PDF.margin, pdf.page.height - PDF.margin - PDF.footerHeight - 280, { fit: [bodyWidth, 260], align: "center", valign: "center" });
       }
     }
     pdf.end();
@@ -371,6 +404,7 @@ export async function exportSelectedFormats(
   content: BookContent,
   exportDir: string,
   formats: Array<"docx" | "pptx" | "pdf">,
+  illustrations: ApprovedIllustrationSet,
   context: Pick<BookRequest, "ageBand" | "language"> & { ensureDocx?: boolean } = { ageBand: content.effectiveAgeBand, language: content.language }
 ): Promise<{ records: ExportRecord[]; failures: ExportFailure[] }> {
   const unique = Array.from(new Set(context.ensureDocx === false ? formats : ["docx" as const, ...formats]));
@@ -378,9 +412,9 @@ export async function exportSelectedFormats(
   const failures: ExportFailure[] = [];
   for (const format of unique) {
     try {
-      if (format === "docx") records.push(await exportDocx(content, exportDir));
-      if (format === "pptx") records.push(await exportPptx(content, exportDir, context));
-      if (format === "pdf") records.push(await exportPdf(content, exportDir));
+      if (format === "docx") records.push(await exportDocx(content, exportDir, illustrations));
+      if (format === "pptx") records.push(await exportPptx(content, exportDir, illustrations, context));
+      if (format === "pdf") records.push(await exportPdf(content, exportDir, illustrations));
     } catch (error) {
       failures.push({ format, code: error instanceof PdfExportError ? error.code : `${format}_export_failed`, message: error instanceof Error ? error.message : String(error) });
       if (format === "docx") break;

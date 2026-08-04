@@ -5,13 +5,15 @@ import { z } from "zod";
 import {
   bookContentSchema,
   bookRequestSchema,
+  illustrationAssetSchema,
   selectionStateSchema,
   type BookContent,
   type BookRequest,
+  type IllustrationAsset,
   type SelectionState
 } from "./domain.ts";
 
-export const PROJECT_SCHEMA_VERSION = "1.0";
+export const PROJECT_SCHEMA_VERSION = "1.1";
 
 export type ProjectStage =
   | "draft"
@@ -19,6 +21,8 @@ export type ProjectStage =
   | "selection_approved"
   | "content_review_required"
   | "language_review_required"
+  | "illustration_review_required"
+  | "illustrations_ready"
   | "documents_ready"
   | "primary_output_ready"
   | "primary_output_accepted"
@@ -119,6 +123,7 @@ export interface BookProject {
   selection: SelectionState;
   contentGeneration: { iterationsUsed: number; currentAttempt: 0 | 1 | 2 };
   content?: BookContent;
+  illustrations: IllustrationAsset[];
   exports: ExportRecord[];
   primaryOutput: PrimaryOutputAcceptance;
   exportFailures: ExportFailure[];
@@ -150,6 +155,7 @@ export function createProject(input: unknown): BookProject {
       cumulativeExclusions: []
     },
     contentGeneration: { iterationsUsed: 0, currentAttempt: 0 },
+    illustrations: [],
     exports: [],
     primaryOutput: { status: "not_ready" },
     exportFailures: [],
@@ -160,11 +166,12 @@ export function createProject(input: unknown): BookProject {
 export function parseProject(input: unknown): BookProject {
   if (!input || typeof input !== "object") throw new Error("Invalid project manifest.");
   const candidate = input as Record<string, unknown>;
-  if (candidate.schemaVersion !== PROJECT_SCHEMA_VERSION) {
+  if (candidate.schemaVersion !== PROJECT_SCHEMA_VERSION && candidate.schemaVersion !== "1.0") {
     throw new Error(`Unsupported project schema version: ${String(candidate.schemaVersion)}.`);
   }
   const project = {
     ...(candidate as unknown as BookProject),
+    schemaVersion: PROJECT_SCHEMA_VERSION as typeof PROJECT_SCHEMA_VERSION,
     sourceRevision: typeof candidate.sourceRevision === "number" ? candidate.sourceRevision : 1,
     reworksUsed: typeof candidate.reworksUsed === "number" ? candidate.reworksUsed : 0,
     primaryOutput: (candidate.primaryOutput as PrimaryOutputAcceptance | undefined) ?? { status: "not_ready" },
@@ -172,6 +179,7 @@ export function parseProject(input: unknown): BookProject {
     request: bookRequestSchema.parse(candidate.request),
     selection: selectionStateSchema.parse(candidate.selection),
     content: candidate.content ? bookContentSchema.parse(candidate.content) : undefined,
+    illustrations: z.array(illustrationAssetSchema).parse(candidate.illustrations ?? []),
     exportFailures: Array.isArray(candidate.exportFailures) ? candidate.exportFailures as ExportFailure[] : [],
     canva: canvaStateSchema.parse(candidate.canva ?? { status: "not_checked" })
   };

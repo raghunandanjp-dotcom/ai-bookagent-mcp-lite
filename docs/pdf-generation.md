@@ -8,7 +8,7 @@ The PDF uses A4 portrait pages with 56-point margins. It contains one cover foll
 
 The optional content `closingNote` is not part of the MVP PDF and does not add a page. Poem titles and intentional line and stanza breaks are preserved exactly; the PDF exporter does not redefine poem structure or age iteration.
 
-Section pages use a 24-point creature heading, 16-point section heading, 13-point body with 18-point leading, a running header, and a `Page X of Y` footer. Activity pages also carry the illustration brief and alt text as readable text.
+Section pages use a 24-point creature heading, 16-point section heading, 13-point body with 18-point leading, a running header, a `Page X of Y` footer, and proportionally fitted approved artwork. The cover uses the approved cover asset; all three pages for a creature reuse that creature's approved asset. Raw prompts, illustration briefs, placeholder labels, generation messages, and internal alternative-text labels are never rendered.
 
 ## Fonts and failure behavior
 
@@ -20,10 +20,10 @@ An optional PDF failure does not invalidate successful DOCX or PPTX files. Succe
 
 ## Accessibility and print expectations
 
-The MVP produces searchable Unicode text in logical page order, embeds fonts, provides adequate contrast, includes page numbers, and renders illustration descriptions as text. It is accessibility-aware but is not certified as PDF/UA.
+The MVP produces searchable Unicode text in logical page order, embeds fonts, provides adequate contrast, includes page numbers, and writes each image's reviewed alternative text into a tagged PDF `Figure` structure element. It is accessibility-aware but is not certified as PDF/UA.
 
 The file is suitable for A4 home, school, and office printing. It uses vector text and safe margins, but does not claim PDF/X conformance, CMYK output, bleed, crop marks, or commercial-press certification.
 
 ## Verification
 
-Automated structural tests inspect page count, section coverage, extracted text, excluded closing notes, embedded font programs, missing-font behavior, and partial-export behavior. Representative 1, 5, 11, and 20-creature PDFs should also be rasterized locally and reviewed for clipping, broken glyphs, stanza preservation, footer collisions, and blank pages.
+Automated structural tests inspect page count, section coverage, extracted text, forbidden production copy, tagged alternative text, embedded font programs, missing-font behavior, and partial-export behavior. Representative 1, 5, 11, and 20-creature PDFs should also be rasterized locally and reviewed for artwork clipping or distortion, broken glyphs, stanza preservation, footer collisions, and blank pages.
