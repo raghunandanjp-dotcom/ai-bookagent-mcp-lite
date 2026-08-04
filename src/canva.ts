@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { LIMITS, type BookContent, type BookRequest, type IllustrationAsset } from "./domain.ts";
+import type { BookDesign } from "./design.ts";
 import type { CanvaState } from "./project.ts";
-import { normalizePoemText } from "./poems.ts";
 
 export const canvaCapabilitySchema = z.object({
   status: z.enum(["ready", "unavailable", "authorization_required"]),
@@ -18,18 +18,18 @@ function isMatchingCanvaEditUrl(value: string, designId: string): boolean {
   if (hostname !== "canva.com" && !hostname.endsWith(".canva.com")) return false;
   const match = url.pathname.match(/^\/design\/([^/]+)(?:\/edit)?\/?$/u);
   if (!match) return false;
-  try {
-    return decodeURIComponent(match[1]) === designId;
-  } catch {
-    return false;
-  }
+  try { return decodeURIComponent(match[1]) === designId; } catch { return false; }
 }
 
 export const canvaResultSchema = z.discriminatedUnion("outcome", [
   z.object({
     outcome: z.literal("success"),
     designId: designIdSchema,
-    editUrl: z.string().url()
+    editUrl: z.string().url(),
+    sourceRevision: z.number().int().positive(),
+    designRevision: z.number().int().positive(),
+    illustrationSetDigest: z.string().regex(/^[a-f0-9]{64}$/u),
+    pageCount: z.number().int().positive()
   }),
   z.object({
     outcome: z.literal("failed"),
@@ -46,9 +46,7 @@ export const canvaResultSchema = z.discriminatedUnion("outcome", [
 export function checkCanvaReadiness(capability: unknown): CanvaState {
   const parsed = canvaCapabilitySchema.parse(capability);
   const checkedAt = new Date().toISOString();
-  const adapter = parsed.connectorName || parsed.toolName
-    ? { connectorName: parsed.connectorName, toolName: parsed.toolName }
-    : undefined;
+  const adapter = parsed.connectorName || parsed.toolName ? { connectorName: parsed.connectorName, toolName: parsed.toolName } : undefined;
   if (parsed.status !== "ready") {
     return {
       status: "setup_required",
@@ -59,25 +57,18 @@ export function checkCanvaReadiness(capability: unknown): CanvaState {
         "Open the host's connector or integration settings.",
         "Authorize the intended Canva account, then run the readiness check again."
       ] : [
-        "Open Claude's connector or integration settings.",
+        "Open the host's connector or integration settings.",
         "Install or enable Canva, then authorize the intended Canva account.",
         "Return to this project and run the Canva readiness check again."
       ]
     };
   }
-  return { status: "design_selection_required", readiness: "ready", checkedAt, adapter };
+  return { status: "ready_for_consent", readiness: "ready", checkedAt, adapter };
 }
 
 export function recordCanvaConsent(consent: boolean): CanvaState {
   if (!consent) return { status: "declined", declinedAt: new Date().toISOString() };
   return { status: "consented", consentedAt: new Date().toISOString() };
-}
-
-function canvaSectionTitle(language: BookRequest["language"], section: "poem" | "funFact" | "activity"): string {
-  if (language === "kn") {
-    return section === "poem" ? "ಕವಿತೆ" : section === "funFact" ? "ಆಸಕ್ತಿದಾಯಕ ಸಂಗತಿ" : "ಚಟುವಟಿಕೆ";
-  }
-  return section === "poem" ? "Poem" : section === "funFact" ? "Fun Fact" : "Activity";
 }
 
 export function prepareCanvaHandoff(
@@ -86,25 +77,29 @@ export function prepareCanvaHandoff(
   request: BookRequest,
   content: BookContent,
   illustrations: IllustrationAsset[],
-  canva: CanvaState
+  canva: CanvaState,
+  design: BookDesign
 ) {
   if (canva.status !== "consented" && !(canva.status === "failed" && canva.failure?.retryable && canva.consentedAt)) {
     throw new Error("Explicit Canva consent is required before preparing the handoff.");
   }
-  if (!canva.selection || canva.selection.sourceRevision !== canva.sourceRevision) {
-    throw new Error("A Canva design must be selected for the current source revision.");
+  if (design.status !== "approved" || design.sourceRevision !== canva.sourceRevision || design.designRevision !== canva.designRevision || design.illustrationSetDigest !== canva.illustrationSetDigest) {
+    throw new Error("The approved canonical BookDesign does not match the consented Canva handoff.");
   }
   const requiredAssetIds = ["cover", ...content.creatures.map((creature) => `creature-${creature.creatureId}`)];
-  if (illustrations.length !== requiredAssetIds.length || requiredAssetIds.some((assetId) => illustrations.filter((asset) => asset.assetId === assetId && asset.approvalStatus === "approved").length !== 1)) {
+  if (illustrations.length !== requiredAssetIds.length || requiredAssetIds.some((id) => illustrations.filter((asset) => asset.assetId === id && asset.approvalStatus === "approved").length !== 1)) {
     throw new Error("Every required cover and creature illustration must be uniquely approved before preparing the Canva handoff.");
   }
-  const slideCount = 1 + content.creatures.length * 3;
+  const slideCount = design.pages.length;
   return {
-    handoffVersion: "1.1",
+    handoffVersion: "2.0",
     operation: "create_editable_design",
+    mode: canva.selection ? "explicit_redesign_requested" : "faithful_canonical_reproduction",
     correlation: { projectId, revision },
-    sourceRevision: canva.sourceRevision,
-    selectedDesign: canva.selection,
+    sourceRevision: design.sourceRevision,
+    designRevision: design.designRevision,
+    illustrationSetDigest: design.illustrationSetDigest,
+    ...(canva.selection ? { selectedDesign: canva.selection } : {}),
     designType: "presentation",
     title: content.title,
     dimensions: "16:9",
@@ -114,68 +109,33 @@ export function prepareCanvaHandoff(
     audience: `ages ${request.ageBand}`,
     creaturesCovered: content.creatures.map((creature) => creature.displayName),
     locale: request.language === "kn" ? "kn-IN" : "en-US",
+    theme: design.theme,
+    formatProfile: design.formatProfiles.presentation,
+    formatExceptions: design.formatExceptions.filter((item) => item.format === "canva"),
     typography: request.language === "kn" ? {
-      script: "Kannada",
-      preferredFont: "Noto Sans Kannada",
-      requireKannadaGlyphCoverage: true,
-      preserveEditableText: true,
+      script: "Kannada", preferredFont: "Noto Sans Kannada", requireKannadaGlyphCoverage: true, preserveEditableText: true,
       fallbackPolicy: "Do not transliterate, replace, or rasterize Kannada text. If a Kannada-capable editable font is unavailable, return a structured non-retryable failure."
-    } : {
-      script: "Latin",
-      preferredFont: "Noto Sans",
-      preserveEditableText: true
-    },
-    review: request.language === "kn" ? {
-      experimental: true,
-      humanLanguageReviewRequired: true,
-      renderedGlyphReviewRequired: true
-    } : {
-      experimental: false,
-      humanLanguageReviewRequired: false,
-      renderedGlyphReviewRequired: false
-    },
+    } : { script: "Latin", preferredFont: "Noto Sans", preserveEditableText: true },
+    review: request.language === "kn" ? { experimental: true, humanLanguageReviewRequired: true, renderedGlyphReviewRequired: true } : { experimental: false, humanLanguageReviewRequired: false, renderedGlyphReviewRequired: false },
     instruction: request.language === "kn"
-      ? "Create an editable children's presentation in Kannada. Preserve every supplied Kannada character and intentional poem line/stanza break. Use a Kannada-capable editable font, preferably Noto Sans Kannada; never transliterate, replace, or rasterize the text. Use large readable type, strong contrast, consistent creature illustration treatment, and one poem, fun fact, and activity slide per creature. Return a structured failure if Kannada glyph coverage cannot be preserved."
-      : "Create an editable children's presentation. Preserve all supplied text and intentional poem line/stanza breaks, use large readable type, strong contrast, consistent creature illustration treatment, and one poem, fun fact, and activity slide per creature.",
-    illustrations: requiredAssetIds.map((assetId) => illustrations.find((asset) => asset.assetId === assetId)!).map((asset) => ({
-      assetId: asset.assetId,
-      role: asset.role,
-      creatureId: asset.creatureId,
-      relativePath: asset.relativePath,
-      mimeType: asset.mimeType,
-      width: asset.width,
-      height: asset.height,
-      bytes: asset.bytes,
-      sha256: asset.sha256,
-      altText: asset.altText,
-      source: asset.source,
-      provenance: asset.provenance,
-      license: asset.license
+      ? "Faithfully reproduce the approved canonical BookDesign as an editable Canva presentation. Preserve page order, every Kannada character, line and stanza breaks, wording, colors, typography intent, and illustration placement. Never transliterate or rasterize text. Report any required font substitution or other format exception; return a structured failure if glyph coverage cannot be preserved."
+      : "Faithfully reproduce the approved canonical BookDesign as an editable Canva presentation. Preserve page order, wording, line and stanza breaks, colors, typography intent, illustration placement, and editable text. Report every unavoidable format exception instead of silently redesigning.",
+    illustrations: requiredAssetIds.map((id) => illustrations.find((asset) => asset.assetId === id)!).map((asset) => ({
+      assetId: asset.assetId, role: asset.role, creatureId: asset.creatureId, relativePath: asset.relativePath, mimeType: asset.mimeType,
+      width: asset.width, height: asset.height, bytes: asset.bytes, sha256: asset.sha256, altText: asset.altText,
+      source: asset.source, provenance: asset.provenance, license: asset.license
     })),
-    pages: [
-      { type: "cover", title: content.title, illustrationAssetId: "cover" },
-      ...content.creatures.flatMap((creature) =>
-        (["poem", "funFact", "activity"] as const).map((section) => ({
-          type: section,
-          creatureId: creature.creatureId,
-          creature: creature.displayName,
-          title: `${creature.displayName} — ${canvaSectionTitle(request.language, section)}`,
-          body: section === "poem" ? normalizePoemText(creature.poem.text) : creature[section].text,
-          ...(section === "poem" ? { poemTitle: creature.poem.title, rhymeScheme: creature.poem.rhymeScheme } : {}),
-          illustrationAssetId: `creature-${creature.creatureId}`
-        }))
-      )
-    ]
+    pages: design.pages
   };
 }
 
-export function recordCanvaResult(input: unknown): CanvaState {
+export function recordCanvaResult(input: unknown, expected?: Pick<BookDesign, "sourceRevision" | "designRevision" | "illustrationSetDigest" | "pages">): CanvaState {
   const result = canvaResultSchema.parse(input);
   if (result.outcome === "failed") {
-    return {
-      status: "failed",
-      failure: { code: result.code, message: result.message, retryable: result.retryable, failedAt: new Date().toISOString() }
-    };
+    return { status: "failed", failure: { code: result.code, message: result.message, retryable: result.retryable, failedAt: new Date().toISOString() } };
+  }
+  if (expected && (result.sourceRevision !== expected.sourceRevision || result.designRevision !== expected.designRevision || result.illustrationSetDigest !== expected.illustrationSetDigest || result.pageCount !== expected.pages.length)) {
+    throw new Error("Canva result parity metadata does not match the approved canonical BookDesign.");
   }
   return { status: "complete", designId: result.designId, editUrl: result.editUrl };
 }

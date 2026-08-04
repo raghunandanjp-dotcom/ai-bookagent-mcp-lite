@@ -7,6 +7,7 @@ import {
   acceptCanvaResult,
   acceptPrimaryOutput,
   approveCreatureSelection,
+  approveBookDesign,
   consentToCanva,
   createPromptPackage,
   generateDocuments,
@@ -21,6 +22,7 @@ import {
 import { loadProject, saveProject } from "../src/project.ts";
 import { exportSelectedFormats } from "../src/exporters.ts";
 import { fixtureIllustrations } from "./fixtures/illustrations.ts";
+import { buildBookDesign } from "../src/design.ts";
 
 vi.mock("../src/exporters.ts", () => ({
   exportSelectedFormats: vi.fn(async (_content, _dir, formats: Array<"docx" | "pptx" | "pdf">, _illustrations, context?: { ensureDocx?: boolean }) => ({
@@ -72,7 +74,9 @@ const content = {
 async function seedIllustrations(projectDir: string) {
   const project = await loadProject(projectDir);
   const { assets } = await fixtureIllustrations(projectDir, content.creatures.map((item) => item.creatureId));
-  await saveProject(projectDir, { ...project, illustrations: assets });
+  const review = { approvedAt: new Date().toISOString(), approvedBy: "Test reviewer" };
+  const design = { ...buildBookDesign(content, assets, project.sourceRevision, 1), status: "approved" as const, ...review };
+  await saveProject(projectDir, { ...project, illustrations: assets, design, stage: "design_approved" });
 }
 
 describe("persisted workflow bookkeeping", () => {
@@ -218,7 +222,11 @@ describe("persisted workflow bookkeeping", () => {
     const completed = await acceptCanvaResult(projectDir, {
       outcome: "success",
       designId: "design-1",
-      editUrl: "https://www.canva.com/design/design-1/edit"
+      editUrl: "https://www.canva.com/design/design-1/edit",
+      sourceRevision: failed.sourceRevision,
+      designRevision: failed.design!.designRevision,
+      illustrationSetDigest: failed.design!.illustrationSetDigest,
+      pageCount: failed.design!.pages.length
     });
     expect(completed).toMatchObject({
       revision: 11,
@@ -242,7 +250,9 @@ describe("persisted workflow bookkeeping", () => {
       closingNote: "First revision"
     });
     expect(first).toMatchObject({ reworksRemaining: 1, warning: "Only one rework remains." });
-    expect(first.project.primaryOutput.status).toBe("ready_for_review");
+    expect(first.project).toMatchObject({ stage: "design_review_required", primaryOutput: { status: "not_ready" }, design: { status: "ready_for_review", designRevision: 2 } });
+    await approveBookDesign(projectDir, "Test reviewer");
+    await generateDocuments(projectDir, ["docx"]);
 
     const second = await reworkPrimaryOutput(projectDir, {
       ...content,
@@ -252,33 +262,23 @@ describe("persisted workflow bookkeeping", () => {
     await expect(reworkPrimaryOutput(projectDir, content)).rejects.toThrow(/maximum of two/i);
   });
 
-  it("preserves project state and rework allowance when the reviewed DOCX is locked", async () => {
+  it("creates a fresh design review and does not export stale layout during rework", async () => {
     await initializeProject(projectDir, { title: "Ocean Friends", theme: "ocean creatures", creatureCount: 1 });
     await updateCreatureSelection(projectDir, [creature]);
     await approveCreatureSelection(projectDir);
     await acceptBookContent(projectDir, content);
     await seedIllustrations(projectDir);
     await generateDocuments(projectDir, ["docx"]);
-    const before = await loadProject(projectDir);
-    vi.mocked(exportSelectedFormats).mockResolvedValueOnce({
-      records: [],
-      failures: [{
-        format: "docx",
-        code: "docx_output_locked",
-        message: "The reviewed DOCX is open or locked. Close it in Microsoft Word or any other application, then retry rework_primary_output."
-      }]
+    vi.mocked(exportSelectedFormats).mockClear();
+    const result = await reworkPrimaryOutput(projectDir, { ...content, closingNote: "Revised" });
+    expect(exportSelectedFormats).not.toHaveBeenCalled();
+    expect(result.project).toMatchObject({
+      reworksUsed: 1,
+      stage: "design_review_required",
+      primaryOutput: { status: "not_ready" },
+      design: { status: "ready_for_review", designRevision: 2 }
     });
-
-    await expect(reworkPrimaryOutput(projectDir, { ...content, closingNote: "Revised" }))
-      .rejects.toThrow(/close it in Microsoft Word.*retry rework_primary_output/i);
-
-    expect(await loadProject(projectDir)).toEqual(before);
-    expect(before).toMatchObject({
-      reworksUsed: 0,
-      stage: "primary_output_ready",
-      primaryOutput: { status: "ready_for_review" }
-    });
-    expect(before.primaryOutput.sourceRevision).toBe(before.sourceRevision);
+    expect(result.project.design!.sourceRevision).toBe(result.project.sourceRevision);
   });
 
   it("requires accepted current DOCX for secondary outputs and Canva", async () => {

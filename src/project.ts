@@ -12,8 +12,9 @@ import {
   type IllustrationAsset,
   type SelectionState
 } from "./domain.ts";
+import { bookDesignSchema, type BookDesign } from "./design.ts";
 
-export const PROJECT_SCHEMA_VERSION = "1.1";
+export const PROJECT_SCHEMA_VERSION = "1.2";
 
 function requireAbsoluteProjectDir(projectDir: string): void {
   if (!path.isAbsolute(projectDir)) {
@@ -31,6 +32,8 @@ export type ProjectStage =
   | "language_review_required"
   | "illustration_review_required"
   | "illustrations_ready"
+  | "design_review_required"
+  | "design_approved"
   | "documents_ready"
   | "primary_output_ready"
   | "primary_output_accepted"
@@ -51,12 +54,16 @@ export interface ExportRecord {
   bytes: number;
   createdAt: string;
   sourceRevision?: number;
+  designRevision?: number;
+  illustrationSetDigest?: string;
   warnings?: string[];
 }
 
 export interface PrimaryOutputAcceptance {
   status: "not_ready" | "ready_for_review" | "accepted";
   sourceRevision?: number;
+  designRevision?: number;
+  illustrationSetDigest?: string;
   sha256?: string;
   relativePath?: string;
   acceptedAt?: string;
@@ -69,6 +76,7 @@ export interface CanvaDesignSelection {
   templateUrl?: string;
   selectedAt: string;
   sourceRevision: number;
+  designRevision?: number;
 }
 
 export interface ExportFailure {
@@ -90,6 +98,8 @@ export interface CanvaState {
   failure?: { code: string; message: string; retryable: boolean; failedAt: string };
   selection?: CanvaDesignSelection;
   sourceRevision?: number;
+  designRevision?: number;
+  illustrationSetDigest?: string;
 }
 
 const canvaStateSchema = z.object({
@@ -113,10 +123,23 @@ const canvaStateSchema = z.object({
     title: z.string().min(1),
     templateUrl: z.string().url().optional(),
     selectedAt: z.string().datetime(),
-    sourceRevision: z.number().int().positive()
+    sourceRevision: z.number().int().positive(),
+    designRevision: z.number().int().positive().optional()
   }).optional(),
-  sourceRevision: z.number().int().positive().optional()
+  sourceRevision: z.number().int().positive().optional(),
+  designRevision: z.number().int().positive().optional(),
+  illustrationSetDigest: z.string().regex(/^[a-f0-9]{64}$/u).optional()
 });
+
+const designPreviewSchema = z.object({
+  relativePath: z.string().min(1),
+  sha256: z.string().regex(/^[a-f0-9]{64}$/u),
+  bytes: z.number().int().positive(),
+  createdAt: z.string().datetime(),
+  designRevision: z.number().int().positive()
+});
+
+export type DesignPreview = z.infer<typeof designPreviewSchema>;
 
 export interface BookProject {
   schemaVersion: typeof PROJECT_SCHEMA_VERSION;
@@ -132,6 +155,8 @@ export interface BookProject {
   contentGeneration: { iterationsUsed: number; currentAttempt: 0 | 1 | 2 };
   content?: BookContent;
   illustrations: IllustrationAsset[];
+  design?: BookDesign;
+  designPreview?: DesignPreview;
   exports: ExportRecord[];
   primaryOutput: PrimaryOutputAcceptance;
   exportFailures: ExportFailure[];
@@ -164,6 +189,8 @@ export function createProject(input: unknown): BookProject {
     },
     contentGeneration: { iterationsUsed: 0, currentAttempt: 0 },
     illustrations: [],
+    design: undefined,
+    designPreview: undefined,
     exports: [],
     primaryOutput: { status: "not_ready" },
     exportFailures: [],
@@ -174,7 +201,7 @@ export function createProject(input: unknown): BookProject {
 export function parseProject(input: unknown): BookProject {
   if (!input || typeof input !== "object") throw new Error("Invalid project manifest.");
   const candidate = input as Record<string, unknown>;
-  if (candidate.schemaVersion !== PROJECT_SCHEMA_VERSION && candidate.schemaVersion !== "1.0") {
+  if (candidate.schemaVersion !== PROJECT_SCHEMA_VERSION && candidate.schemaVersion !== "1.1" && candidate.schemaVersion !== "1.0") {
     throw new Error(`Unsupported project schema version: ${String(candidate.schemaVersion)}.`);
   }
   const project = {
@@ -188,6 +215,8 @@ export function parseProject(input: unknown): BookProject {
     selection: selectionStateSchema.parse(candidate.selection),
     content: candidate.content ? bookContentSchema.parse(candidate.content) : undefined,
     illustrations: z.array(illustrationAssetSchema).parse(candidate.illustrations ?? []),
+    design: candidate.design ? bookDesignSchema.parse(candidate.design) : undefined,
+    designPreview: candidate.designPreview ? designPreviewSchema.parse(candidate.designPreview) : undefined,
     exportFailures: Array.isArray(candidate.exportFailures) ? candidate.exportFailures as ExportFailure[] : [],
     canva: canvaStateSchema.parse(candidate.canva ?? { status: "not_checked" })
   };

@@ -133,10 +133,11 @@ export class IllustrationValidationError extends Error {
   }
 }
 
-export async function resolveApprovedIllustrations(
+export async function resolveIllustrations(
   projectDir: string,
   content: BookContent,
-  assets: IllustrationAsset[]
+  assets: IllustrationAsset[],
+  requireApproval: boolean
 ): Promise<ApprovedIllustrationSet> {
   const required: Array<{ role: "cover" | "creature"; creatureId?: string }> = [
     { role: "cover" },
@@ -149,7 +150,7 @@ export async function resolveApprovedIllustrations(
     const matches = assets.filter((asset) => asset.assetId === id);
     if (matches.length !== 1) { errors.push(`${id}: expected exactly one illustration asset.`); continue; }
     const asset = illustrationAssetSchema.parse(matches[0]);
-    if (asset.approvalStatus !== "approved") { errors.push(`${id}: illustration must be approved before export.`); continue; }
+    if (requireApproval && asset.approvalStatus !== "approved") { errors.push(`${id}: illustration must be approved before export.`); continue; }
     const absolutePath = resolveInside(projectDir, asset.relativePath);
     try {
       const data = await readFile(absolutePath);
@@ -174,6 +175,14 @@ export async function resolveApprovedIllustrations(
   };
 }
 
+export async function resolveApprovedIllustrations(
+  projectDir: string,
+  content: BookContent,
+  assets: IllustrationAsset[]
+): Promise<ApprovedIllustrationSet> {
+  return resolveIllustrations(projectDir, content, assets, true);
+}
+
 export function prepareIllustrationPrompts(request: BookRequest, content: BookContent) {
   const artDirection = `Create a cohesive children's book illustration set for ${request.title}. Maintain the same palette, rendering style, lighting, character proportions, and age-appropriate tone across every asset. Do not include typography, captions, borders, watermarks, or UI elements.`;
   const coverPrompt = `${artDirection} Cover scene: introduce the ${request.theme} world and include recognizable appearances of the selected creatures without crowding. Leave calm visual space for a separately editable book title.`;
@@ -188,6 +197,6 @@ export function prepareIllustrationPrompts(request: BookRequest, content: BookCo
         return { assetId: slotId("creature", creature.creatureId), role: "creature", creatureId: creature.creatureId, prompt, promptDigest: createHash("sha256").update(prompt).digest("hex"), suggestedAltText: creature.altText };
       })
     ],
-    workflow: "Generate each asset with a host-provided image tool or supply an existing image, import it into the project, review it, and explicitly approve it. No paid image API is required by this connector."
+    workflow: "Preferred path: author the complete set as constrained SVG markup, import it in one batch for local sanitization and PNG rasterization, then review the HTML book design once. Existing PNG/JPEG assets may still be imported individually. No paid image API or user-managed source paths are required."
   };
 }

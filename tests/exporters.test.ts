@@ -178,14 +178,14 @@ describe("DOCX exporter", () => {
 });
 
 describe("PDF exporter", () => {
-  it("creates one cover and three section pages while excluding the optional closing note", async () => {
+  it("creates the canonical cover, three section pages, and optional closing page", async () => {
     const directory = await mkdtemp(path.join(os.tmpdir(), "bookagent-pdf-"));
     temporaryDirectories.push(directory);
     const { set } = await fixtureIllustrations(directory, ["octopus"]);
     const record = await exportPdf(content, directory, set);
     const raw = await readFile(path.join(directory, record.relativePath));
     const document = await getDocument({ data: new Uint8Array(raw), useSystemFonts: false }).promise;
-    expect(document.numPages).toBe(4);
+    expect(document.numPages).toBe(5);
     const text: string[] = [];
     for (let pageNumber = 1; pageNumber <= document.numPages; pageNumber += 1) {
       const page = await document.getPage(pageNumber);
@@ -196,7 +196,7 @@ describe("PDF exporter", () => {
     expect(text[1]).toContain("Waving Arms");
     expect(text[2]).toContain("three hearts");
     expect(text.join(" ")).not.toMatch(/Illustration (?:placeholder|brief|direction|idea)|Accessible description:|Alternative text:/iu);
-    expect(text.join(" ")).not.toContain(content.closingNote);
+    expect(text.at(-1)).toContain(content.closingNote);
     expect(raw.toString("latin1")).toMatch(/\/FontFile[23]\b/);
     expect(raw.toString("latin1")).toContain("/StructTreeRoot");
     expect(raw.toString("latin1")).toContain("/Alt");

@@ -5,6 +5,8 @@ import { afterEach, describe, expect, it } from "vitest";
 import {
   acceptBookContent,
   approveCreatureSelection,
+  approveBookDesign,
+  createBookDesignPreview,
   createIllustrationPromptPackage,
   generateDocuments,
   importProjectIllustration,
@@ -72,7 +74,7 @@ describe("approved illustration workflow", () => {
       altText: "Creature 1 explores its colorful habitat."
     });
 
-    await expect(generateDocuments(projectDir, ["docx"])).rejects.toThrow(/must be approved before export/i);
+    await expect(generateDocuments(projectDir, ["docx"])).rejects.toThrow(/HTML book design/i);
     await reviewProjectIllustration(projectDir, "cover", true, "Art reviewer", "Composition approved.");
     await reviewProjectIllustration(projectDir, "creature-creature-1", true, "Art reviewer");
     const approved = await loadProject(projectDir);
@@ -81,6 +83,8 @@ describe("approved illustration workflow", () => {
     expect(approved.illustrations[0]).toMatchObject({ mimeType: "image/png", width: 640, height: 360, source: "host_generated", approvalStatus: "approved", approvedBy: "Art reviewer" });
     expect(approved.illustrations.every((asset) => /^[a-f0-9]{64}$/u.test(asset.sha256))).toBe(true);
 
+    await createBookDesignPreview(projectDir);
+    await approveBookDesign(projectDir, "Book reviewer");
     const exported = await generateDocuments(projectDir, ["docx"]);
     expect(exported.exports.find((record) => record.format === "docx")).toBeDefined();
     expect(content.creatures).toHaveLength(1);
@@ -107,6 +111,8 @@ describe("approved illustration workflow", () => {
       });
       await reviewProjectIllustration(projectDir, asset.assetId, true, "Art reviewer");
     }
+    await createBookDesignPreview(projectDir);
+    await approveBookDesign(projectDir, "Book reviewer");
     const project = await loadProject(projectDir);
     const creatureAsset = project.illustrations.find((asset) => asset.role === "creature")!;
     await writeFile(resolveInside(projectDir, creatureAsset.relativePath), "corrupt image bytes");
@@ -116,7 +122,7 @@ describe("approved illustration workflow", () => {
   it("reports missing, unexpected, and digest-mismatched approved illustration sets", async () => {
     const { projectDir, source } = await preparedProject();
 
-    await expect(generateDocuments(projectDir, ["docx"]))
+    await expect(createBookDesignPreview(projectDir))
       .rejects.toThrow(/cover: expected exactly one illustration asset/i);
 
     await importAndApproveIllustrations(projectDir, source);
@@ -134,14 +140,23 @@ describe("approved illustration workflow", () => {
         }
       ]
     });
-    await expect(generateDocuments(projectDir, ["docx"]))
+    await expect(createBookDesignPreview(projectDir))
       .rejects.toThrow(/unexpected illustration slots: creature-unexpected/i);
 
     const withUnexpected = await loadProject(projectDir);
     const expectedAssets = withUnexpected.illustrations.filter((asset) => asset.assetId !== "creature-unexpected");
     expectedAssets[0] = { ...expectedAssets[0]!, sha256: "0".repeat(64) };
     await saveProject(projectDir, { ...approved, illustrations: expectedAssets });
-    await expect(generateDocuments(projectDir, ["docx"]))
+    await expect(createBookDesignPreview(projectDir))
       .rejects.toThrow(/stored illustration digest does not match the approved asset/i);
+  });
+
+  it("rejects approval when the rendered HTML preview changed after creation", async () => {
+    const { projectDir, source } = await preparedProject();
+    await importAndApproveIllustrations(projectDir, source);
+    const previewed = await createBookDesignPreview(projectDir);
+    await writeFile(resolveInside(projectDir, previewed.designPreview!.relativePath), "tampered preview");
+    await expect(approveBookDesign(projectDir, "Book reviewer")).rejects.toThrow(/preview changed/i);
+    expect((await loadProject(projectDir)).design?.status).toBe("ready_for_review");
   });
 });

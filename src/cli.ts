@@ -4,13 +4,16 @@ import path from "node:path";
 import {
   acceptBookContent,
   acceptPrimaryOutput,
+  approveBookDesign,
   approveCreatureSelection,
   createPromptPackage,
   createIllustrationPromptPackage,
+  createBookDesignPreview,
   deliverySummary,
   generateDocuments,
   initializeProject,
   importProjectIllustration,
+  importProjectCodeNativeIllustrationSet,
   reworkPrimaryOutput,
   reviewProjectIllustration,
   updateCreatureSelection
@@ -25,6 +28,9 @@ function usage(): never {
   ai-bookagent prompt <project-dir>
   ai-bookagent illustration-prompts <project-dir>
   ai-bookagent import-illustration <project-dir> <asset.json>
+  ai-bookagent import-svg-set <project-dir> <assets.json>
+  ai-bookagent design-preview <project-dir>
+  ai-bookagent approve-design <project-dir> <review.json>
   ai-bookagent review-illustration <project-dir> <review.json>
   ai-bookagent content <project-dir> <content.json>
   ai-bookagent export <project-dir> [docx,pptx,pdf]
@@ -49,6 +55,12 @@ else if (command === "approve") result = await approveCreatureSelection(absolute
 else if (command === "prompt") result = await createPromptPackage(absoluteProjectDir);
 else if (command === "illustration-prompts") result = await createIllustrationPromptPackage(absoluteProjectDir);
 else if (command === "import-illustration" && argument) result = await importProjectIllustration(absoluteProjectDir, await jsonFile(argument));
+else if (command === "import-svg-set" && argument) result = await importProjectCodeNativeIllustrationSet(absoluteProjectDir, await jsonFile(argument));
+else if (command === "design-preview") result = await createBookDesignPreview(absoluteProjectDir);
+else if (command === "approve-design" && argument) {
+  const review = await jsonFile(argument) as { reviewedBy: string; note?: string };
+  result = await approveBookDesign(absoluteProjectDir, review.reviewedBy, review.note);
+}
 else if (command === "review-illustration" && argument) {
   const review = await jsonFile(argument) as { assetId: string; approved: boolean; reviewedBy: string; note?: string };
   result = await reviewProjectIllustration(absoluteProjectDir, review.assetId, review.approved, review.reviewedBy, review.note);

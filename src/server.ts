@@ -7,15 +7,18 @@ import {
   acceptBookContent,
   acceptPrimaryOutput,
   acceptCanvaResult,
+  approveBookDesign,
   approveCreatureSelection,
   consentToCanva,
   createPromptPackage,
   createIllustrationPromptPackage,
+  createBookDesignPreview,
   deliverySummary,
   generateDocuments,
   getCanvaHandoff,
   initializeProject,
   importProjectIllustration,
+  importProjectCodeNativeIllustrationSet,
   reworkPrimaryOutput,
   replaceCreatureContent,
   reviewProjectIllustration,
@@ -128,6 +131,48 @@ server.registerTool(
 );
 
 server.registerTool(
+  "import_code_native_illustration_set",
+  {
+    description: "Import the complete cover-and-creature illustration set as Claude-authored constrained SVG. The tool strictly rejects executable, linked, embedded, or text content, rasterizes approved markup locally to PNG, and records provenance without requiring external image files.",
+    inputSchema: {
+      projectDir: z.string().min(1),
+      assets: z.array(z.object({
+        role: illustrationRoleSchema,
+        creatureId: z.string().min(1).optional(),
+        svg: z.string().min(1),
+        altText: z.string().min(1),
+        createdBy: z.string().min(1).default("Claude"),
+        model: z.string().min(1).optional(),
+        promptDigest: z.string().regex(/^[a-f0-9]{64}$/u).optional()
+      })).min(2).max(21)
+    }
+  },
+  async ({ projectDir, assets }) => text(await importProjectCodeNativeIllustrationSet(projectDir, assets))
+);
+
+server.registerTool(
+  "create_book_design_preview",
+  {
+    description: "Create the canonical BookDesign manifest and a self-contained local HTML-first preview from validated content and the complete illustration set. The preview is the review source for every downstream format.",
+    inputSchema: { projectDir: z.string().min(1) }
+  },
+  async ({ projectDir }) => text(await createBookDesignPreview(projectDir))
+);
+
+server.registerTool(
+  "approve_book_design",
+  {
+    description: "Approve the current canonical HTML book design and all illustrations shown in it in one batch review. This unlocks faithful DOCX, PPTX, PDF, and Canva outputs.",
+    inputSchema: {
+      projectDir: z.string().min(1),
+      reviewedBy: z.string().min(1),
+      note: z.string().min(1).optional()
+    }
+  },
+  async ({ projectDir, reviewedBy, note }) => text(await approveBookDesign(projectDir, reviewedBy, note))
+);
+
+server.registerTool(
   "review_illustration_asset",
   {
     description: "Approve or reject one imported illustration. Every required slot must be approved before final export.",
@@ -157,7 +202,7 @@ server.registerTool(
 server.registerTool(
   "create_document_exports",
   {
-    description: "Create the primary DOCX by default, or accepted-current-revision PPTX/PDF secondary outputs.",
+    description: "Create faithful outputs from the approved canonical BookDesign: primary DOCX by default, then accepted-current-design PPTX/PDF secondary outputs.",
     inputSchema: {
       projectDir: z.string().min(1),
       formats: z.array(z.enum(["docx", "pptx", "pdf"])).optional()
@@ -255,6 +300,10 @@ server.registerTool(
       outcome: z.enum(["success", "failed"]),
       designId: z.string().min(1).optional(),
       editUrl: z.string().url().optional(),
+      sourceRevision: z.number().int().positive().optional(),
+      designRevision: z.number().int().positive().optional(),
+      illustrationSetDigest: z.string().regex(/^[a-f0-9]{64}$/u).optional(),
+      pageCount: z.number().int().positive().optional(),
       code: z.string().min(1).optional(),
       message: z.string().min(1).optional(),
       retryable: z.boolean().optional()

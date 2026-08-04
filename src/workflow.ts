@@ -1,5 +1,6 @@
 import path from "node:path";
-import { mkdir, writeFile } from "node:fs/promises";
+import { copyFile, mkdir, writeFile } from "node:fs/promises";
+import { fileURLToPath } from "node:url";
 import { z } from "zod";
 import {
   bookContentSchema,
@@ -12,11 +13,15 @@ import { exportSelectedFormats } from "./exporters.ts";
 import {
   importIllustration,
   prepareIllustrationPrompts,
+  resolveIllustrations,
   resolveApprovedIllustrations
 } from "./illustrations.ts";
+import { buildBookDesign, illustrationSetDigest, renderBookDesignHtml } from "./design.ts";
+import { importCodeNativeIllustrationSet } from "./svg-illustrations.ts";
 import { prepareAuthoringPrompts } from "./prompts.ts";
 import {
   createProject,
+  fileDigest,
   loadProject,
   resolveInside,
   saveProject,
@@ -26,19 +31,32 @@ import { approveSelection, beginSelection } from "./selection.ts";
 import { validateBookContent } from "./validation.ts";
 
 type ProjectMutation = Partial<
-  Pick<BookProject, "stage" | "selection" | "contentGeneration" | "content" | "illustrations" | "exports" | "exportFailures" | "canva" | "sourceRevision" | "reworksUsed" | "primaryOutput">
+  Pick<BookProject, "stage" | "selection" | "contentGeneration" | "content" | "illustrations" | "design" | "designPreview" | "exports" | "exportFailures" | "canva" | "sourceRevision" | "reworksUsed" | "primaryOutput">
 >;
 
 const MAX_REWORKS = 2;
 
 function currentExports(project: BookProject) {
-  return project.exports.filter((record) => record.sourceRevision === project.sourceRevision);
+  return project.exports.filter((record) => record.sourceRevision === project.sourceRevision &&
+    record.designRevision === project.design?.designRevision &&
+    record.illustrationSetDigest === project.design?.illustrationSetDigest);
+}
+
+function requireApprovedDesign(project: BookProject) {
+  if (!project.design || project.design.status !== "approved" ||
+      project.design.sourceRevision !== project.sourceRevision ||
+      project.design.illustrationSetDigest !== illustrationSetDigest(project.illustrations)) {
+    throw new Error("Approve the current HTML book design before exporting or starting Canva.");
+  }
+  return project.design;
 }
 
 function requireAcceptedPrimary(project: BookProject): void {
   const docx = currentExports(project).find((record) => record.format === "docx");
   if (!docx || project.primaryOutput.status !== "accepted" ||
       project.primaryOutput.sourceRevision !== project.sourceRevision ||
+      project.primaryOutput.designRevision !== project.design?.designRevision ||
+      project.primaryOutput.illustrationSetDigest !== project.design?.illustrationSetDigest ||
       project.primaryOutput.sha256 !== docx.sha256) {
     throw new Error("Accept the current DOCX primary output before creating secondary outputs or starting Canva.");
   }
@@ -77,6 +95,7 @@ export async function updateCreatureSelection(
     sourceRevision: project.sourceRevision + 1,
     content: undefined,
     illustrations: [],
+    designPreview: undefined,
     primaryOutput: { status: "not_ready" },
     exportFailures: [],
     canva: { status: "not_checked" }
@@ -125,10 +144,95 @@ export async function importProjectIllustration(projectDir: string, input: unkno
     stage: "illustration_review_required",
     sourceRevision: project.sourceRevision + 1,
     illustrations: [...project.illustrations.filter((item) => item.assetId !== asset.assetId), asset],
+    designPreview: undefined,
     primaryOutput: { status: "not_ready" },
     exportFailures: [],
     canva: { status: "not_checked" }
   });
+}
+
+export async function importProjectCodeNativeIllustrationSet(projectDir: string, input: unknown): Promise<BookProject> {
+  const project = await loadProject(projectDir);
+  if (!project.content) throw new Error("Validated book content is required before importing illustrations.");
+  const validation = validateBookContent(project.content, project.selection.current, project.request);
+  if (!validation.report.valid) throw new Error("Book content has blocking validation errors.");
+  const illustrations = await importCodeNativeIllustrationSet(projectDir, project.content, input);
+  return persistMutation(projectDir, project, {
+    stage: "illustration_review_required",
+    sourceRevision: project.sourceRevision + 1,
+    illustrations,
+    designPreview: undefined,
+    exports: [],
+    primaryOutput: { status: "not_ready" },
+    exportFailures: [],
+    canva: { status: "not_checked" }
+  });
+}
+
+export async function createBookDesignPreview(projectDir: string): Promise<BookProject> {
+  const project = await loadProject(projectDir);
+  if (!project.content) throw new Error("Validated book content is required before creating a design preview.");
+  await resolveIllustrations(projectDir, project.content, project.illustrations, false);
+  const designRevision = (project.design?.designRevision ?? 0) + 1;
+  const design = buildBookDesign(project.content, project.illustrations, project.sourceRevision, designRevision);
+  const previewDir = resolveInside(projectDir, "previews");
+  const fontDir = resolveInside(projectDir, path.posix.join("assets", "fonts"));
+  await mkdir(previewDir, { recursive: true });
+  await mkdir(fontDir, { recursive: true });
+  const moduleDir = path.dirname(fileURLToPath(import.meta.url));
+  await copyFile(path.resolve(moduleDir, "../assets/fonts/NotoSans-Regular.ttf"), path.join(fontDir, "NotoSans-Regular.ttf"));
+  await copyFile(path.resolve(moduleDir, "../assets/fonts/NotoSans-Bold.ttf"), path.join(fontDir, "NotoSans-Bold.ttf"));
+  if (project.content.language === "kn") {
+    const kannadaFont = process.env.BOOK_AGENT_KANNADA_FONT_PATH;
+    if (!kannadaFont) throw new Error("Kannada HTML design preview requires BOOK_AGENT_KANNADA_FONT_PATH to point to a Kannada-capable TTF font.");
+    await copyFile(kannadaFont, path.join(fontDir, "NotoSansKannada.ttf"));
+  }
+  const references = Object.fromEntries(project.illustrations.map((asset) => [asset.assetId, {
+    href: `../${asset.relativePath.replaceAll("\\", "/")}`,
+    altText: asset.altText
+  }]));
+  const html = renderBookDesignHtml(design, references);
+  const relativePath = path.posix.join("previews", "book-design.html");
+  const previewPath = resolveInside(projectDir, relativePath);
+  await writeFile(previewPath, html, "utf8");
+  const designDir = resolveInside(projectDir, "design");
+  await mkdir(designDir, { recursive: true });
+  await writeFile(path.join(designDir, "book-design.json"), `${JSON.stringify(design, null, 2)}\n`, "utf8");
+  const digest = await fileDigest(previewPath);
+  return persistMutation(projectDir, project, {
+    stage: "design_review_required",
+    design,
+    designPreview: { relativePath, ...digest, createdAt: new Date().toISOString(), designRevision }
+  });
+}
+
+export async function approveBookDesign(projectDir: string, reviewedBy: string, note?: string): Promise<BookProject> {
+  const project = await loadProject(projectDir);
+  if (!reviewedBy.trim()) throw new Error("Design approval requires the reviewer's name or identifier.");
+  if (!project.design || !project.designPreview || project.design.status !== "ready_for_review") {
+    throw new Error("Create and review the current HTML book design before approving it.");
+  }
+  if (project.design.sourceRevision !== project.sourceRevision || project.design.illustrationSetDigest !== illustrationSetDigest(project.illustrations)) {
+    throw new Error("The design preview is stale; create a new preview before approval.");
+  }
+  const previewDigest = await fileDigest(resolveInside(projectDir, project.designPreview.relativePath));
+  if (previewDigest.sha256 !== project.designPreview.sha256 || previewDigest.bytes !== project.designPreview.bytes) {
+    throw new Error("The HTML design preview changed after it was created; create and review a new preview.");
+  }
+  await resolveIllustrations(projectDir, project.content!, project.illustrations, false);
+  const approvedAt = new Date().toISOString();
+  const reviewer = reviewedBy.trim();
+  const illustrations = project.illustrations.map((asset) => ({
+    ...asset,
+    approvalStatus: "approved" as const,
+    approvedAt,
+    approvedBy: reviewer,
+    approvalNote: note?.trim() || "Approved as part of the canonical HTML book design."
+  }));
+  const design = { ...project.design, status: "approved" as const, approvedAt, approvedBy: reviewer, approvalNote: note?.trim() || undefined };
+  const designPath = resolveInside(projectDir, path.posix.join("design", "book-design.json"));
+  await writeFile(designPath, `${JSON.stringify(design, null, 2)}\n`, "utf8");
+  return persistMutation(projectDir, project, { stage: "design_approved", design, illustrations });
 }
 
 export async function reviewProjectIllustration(
@@ -156,6 +260,7 @@ export async function reviewProjectIllustration(
     stage: allApproved ? "illustrations_ready" : "illustration_review_required",
     sourceRevision: project.sourceRevision + 1,
     illustrations,
+    designPreview: undefined,
     primaryOutput: { status: "not_ready" },
     exportFailures: [],
     canva: { status: "not_checked" }
@@ -185,6 +290,7 @@ export async function acceptBookContent(projectDir: string, contentInput: unknow
     stage,
     content: result.content,
     sourceRevision: project.sourceRevision + 1,
+    designPreview: undefined,
     primaryOutput: { status: "not_ready" },
     exportFailures: [],
     canva: { status: "not_checked" }
@@ -213,6 +319,7 @@ export async function replaceCreatureContent(projectDir: string, creatureInput: 
       : "content_review_required",
     content,
     sourceRevision: project.sourceRevision + 1,
+    designPreview: undefined,
     primaryOutput: { status: "not_ready" },
     exportFailures: [],
     canva: { status: "not_checked" }
@@ -228,6 +335,7 @@ export async function generateDocuments(
   const content: BookContent = bookContentSchema.parse(project.content);
   const validation = validateBookContent(content, project.selection.current, project.request);
   if (!validation.report.valid) throw new Error("Book content has blocking validation errors.");
+  const design = requireApprovedDesign(project);
   const requested = formats ?? ["docx"];
   if (requested.length === 0) throw new Error("Select at least one output format.");
   const secondary = requested.filter((format) => format !== "docx");
@@ -240,7 +348,8 @@ export async function generateDocuments(
   const result = await exportSelectedFormats(content, exportDir, requested, illustrations, {
     ageBand: content.effectiveAgeBand,
     language: project.request.language,
-    ensureDocx: secondary.length === 0
+    ensureDocx: secondary.length === 0,
+    design
   });
   if (secondary.length === 0 && !result.records.some((record) => record.format === "docx")) {
     const failure = result.failures.find((item) => item.format === "docx");
@@ -248,7 +357,9 @@ export async function generateDocuments(
   }
   const records = result.records.map((record) => ({
     ...record,
-    sourceRevision: project.sourceRevision
+    sourceRevision: project.sourceRevision,
+    designRevision: design.designRevision,
+    illustrationSetDigest: design.illustrationSetDigest
   }));
   const replacedFormats = new Set(records.map((record) => record.format));
   const exports = [
@@ -264,6 +375,8 @@ export async function generateDocuments(
       primaryOutput: {
         status: "ready_for_review" as const,
         sourceRevision: project.sourceRevision,
+        designRevision: design.designRevision,
+        illustrationSetDigest: design.illustrationSetDigest,
         sha256: docx.sha256,
         relativePath: docx.relativePath
       },
@@ -275,7 +388,9 @@ export async function generateDocuments(
 export async function acceptPrimaryOutput(projectDir: string, note?: string): Promise<BookProject> {
   const project = await loadProject(projectDir);
   const docx = currentExports(project).find((record) => record.format === "docx");
-  if (!docx || project.primaryOutput.status !== "ready_for_review" || project.primaryOutput.sha256 !== docx.sha256) {
+  if (!docx || project.primaryOutput.status !== "ready_for_review" || project.primaryOutput.sha256 !== docx.sha256 ||
+      project.primaryOutput.designRevision !== project.design?.designRevision ||
+      project.primaryOutput.illustrationSetDigest !== project.design?.illustrationSetDigest) {
     throw new Error("Generate and review the current DOCX before accepting the primary output.");
   }
   return persistMutation(projectDir, project, {
@@ -291,57 +406,43 @@ export async function acceptPrimaryOutput(projectDir: string, note?: string): Pr
 
 export async function reworkPrimaryOutput(projectDir: string, contentInput: unknown) {
   const project = await loadProject(projectDir);
+  if (project.reworksUsed >= MAX_REWORKS) throw new Error("The maximum of two primary-output reworks has been used.");
   if (project.primaryOutput.status !== "ready_for_review") {
     throw new Error("A DOCX awaiting review is required before requesting rework.");
   }
-  if (project.reworksUsed >= MAX_REWORKS) throw new Error("The maximum of two primary-output reworks has been used.");
   const validation = validateBookContent(contentInput, project.selection.current, project.request);
   if (!validation.report.valid || !validation.content) throw new Error("Reworked content has blocking validation errors.");
   const sourceRevision = project.sourceRevision + 1;
-  const exportDir = resolveInside(projectDir, "exports");
-  const illustrations = await resolveApprovedIllustrations(projectDir, validation.content, project.illustrations);
-  const result = await exportSelectedFormats(validation.content, exportDir, ["docx"], illustrations, {
-    ageBand: validation.content.effectiveAgeBand,
-    language: project.request.language
-  });
-  const docxRecord = result.records.find((record) => record.format === "docx");
-  if (!docxRecord) {
-    const failure = result.failures.find((item) => item.format === "docx");
-    throw new Error(failure?.message ?? "Mandatory DOCX export failed.");
-  }
-  const docx = {
-    ...docxRecord,
-    sourceRevision
-  };
-  const updated = await persistMutation(projectDir, project, {
-    stage: "primary_output_ready",
+  await persistMutation(projectDir, project, {
+    stage: "content_review_required",
     sourceRevision,
     reworksUsed: project.reworksUsed + 1,
     content: validation.content,
-    exports: [...project.exports, docx],
-    exportFailures: result.failures,
-    primaryOutput: {
-      status: "ready_for_review",
-      sourceRevision,
-      sha256: docx.sha256,
-      relativePath: docx.relativePath
-    },
+    designPreview: undefined,
+    exportFailures: [],
+    primaryOutput: { status: "not_ready" },
     canva: { status: "not_checked" }
   });
+  const updated = await createBookDesignPreview(projectDir);
   return {
     project: updated,
     report: validation.report,
     reworksRemaining: MAX_REWORKS - updated.reworksUsed,
-    warning: updated.reworksUsed === 1 ? "Only one rework remains." : "No reworks remain."
+    warning: updated.reworksUsed === 1 ? "Only one rework remains." : "No reworks remain.",
+    nextAction: "Review and approve the refreshed HTML book design, then regenerate DOCX."
   };
 }
 
 export async function setCanvaCapability(projectDir: string, capability: unknown): Promise<BookProject> {
   const project = await loadProject(projectDir);
   requireAcceptedPrimary(project);
+  const design = requireApprovedDesign(project);
   const canva = checkCanvaReadiness(capability);
-  const stage = canva.status === "setup_required" ? "canva_setup_required" : "canva_design_selection_required";
-  return persistMutation(projectDir, project, { stage, canva });
+  const stage = canva.status === "setup_required" ? "canva_setup_required" : "canva_consent_required";
+  return persistMutation(projectDir, project, {
+    stage,
+    canva: { ...canva, sourceRevision: project.sourceRevision, designRevision: design.designRevision, illustrationSetDigest: design.illustrationSetDigest }
+  });
 }
 
 export async function selectCanvaDesign(
@@ -364,9 +465,12 @@ export async function selectCanvaDesign(
       selection: {
         ...design,
         selectedAt: new Date().toISOString(),
-        sourceRevision: project.sourceRevision
+        sourceRevision: project.sourceRevision,
+        designRevision: project.design?.designRevision
       },
-      sourceRevision: project.sourceRevision
+      sourceRevision: project.sourceRevision,
+      designRevision: project.design?.designRevision,
+      illustrationSetDigest: project.design?.illustrationSetDigest
     }
   });
 }
@@ -374,8 +478,9 @@ export async function selectCanvaDesign(
 export async function consentToCanva(projectDir: string, consent: boolean): Promise<BookProject> {
   const project = await loadProject(projectDir);
   if (project.canva.status !== "ready_for_consent") throw new Error("Canva must be ready before consent is recorded.");
-  if (!project.canva.selection || project.canva.selection.sourceRevision !== project.sourceRevision) {
-    throw new Error("Select a Canva design for the current accepted DOCX before recording consent.");
+  const design = requireApprovedDesign(project);
+  if (project.canva.sourceRevision !== project.sourceRevision || project.canva.designRevision !== design.designRevision || project.canva.illustrationSetDigest !== design.illustrationSetDigest) {
+    throw new Error("Run Canva readiness for the current approved design before recording consent.");
   }
   const consentState = recordCanvaConsent(consent);
   return persistMutation(projectDir, project, {
@@ -394,7 +499,8 @@ export async function getCanvaHandoff(projectDir: string) {
   if (!project.content) throw new Error("Validated content is required.");
   requireAcceptedPrimary(project);
   await resolveApprovedIllustrations(projectDir, project.content, project.illustrations);
-  return prepareCanvaHandoff(project.projectId, project.revision, project.request, project.content, project.illustrations, project.canva);
+  const design = requireApprovedDesign(project);
+  return prepareCanvaHandoff(project.projectId, project.revision, project.request, project.content, project.illustrations, project.canva, design);
 }
 
 export async function acceptCanvaResult(projectDir: string, result: unknown): Promise<BookProject> {
@@ -403,7 +509,8 @@ export async function acceptCanvaResult(projectDir: string, result: unknown): Pr
       !(project.canva.status === "failed" && project.canva.failure?.retryable && project.canva.consentedAt)) {
     throw new Error("Canva consent is required before recording a result.");
   }
-  const resultState = recordCanvaResult(result);
+  const design = requireApprovedDesign(project);
+  const resultState = recordCanvaResult(result, design);
   return persistMutation(projectDir, project, {
     stage: resultState.status === "complete" ? "canva_complete" : "canva_failed",
     canva: {
@@ -412,7 +519,9 @@ export async function acceptCanvaResult(projectDir: string, result: unknown): Pr
       failure: resultState.status === "complete" ? undefined : resultState.failure,
       designId: resultState.status === "complete" ? resultState.designId : undefined,
       editUrl: resultState.status === "complete" ? resultState.editUrl : undefined,
-      sourceRevision: project.sourceRevision
+      sourceRevision: project.sourceRevision,
+      designRevision: design.designRevision,
+      illustrationSetDigest: design.illustrationSetDigest
     }
   });
 }
@@ -426,6 +535,10 @@ export function deliverySummary(project: BookProject) {
     .map(({ code, path, message }) => ({ code, path, message })) ?? [];
   const currentFormats = new Set(currentExports(project).map((record) => record.format));
   const nextActions: string[] = [];
+  const designCurrent = project.design?.sourceRevision === project.sourceRevision && project.design.illustrationSetDigest === illustrationSetDigest(project.illustrations);
+  if (!designCurrent && project.content && project.illustrations.length === 1 + project.content.creatures.length) nextActions.push("create_book_design_preview");
+  if (designCurrent && project.design?.status === "ready_for_review") nextActions.push("approve_book_design");
+  if (designCurrent && project.design?.status === "approved" && project.primaryOutput.status === "not_ready") nextActions.push("create_docx");
   if (project.primaryOutput.status === "ready_for_review") {
     if (project.reworksUsed < MAX_REWORKS) nextActions.push("rework_primary_output");
     nextActions.push("accept_primary_output");
@@ -473,6 +586,13 @@ export function deliverySummary(project: BookProject) {
           : contentReviewIssues.length > 0 ? "required" : "complete",
         outstandingCount: contentReviewIssues.length,
         issues: contentReviewIssues
+      },
+      design: {
+        status: !project.design ? "not_available" : !designCurrent ? "stale" : project.design.status,
+        designRevision: project.design?.designRevision,
+        sourceRevision: project.design?.sourceRevision,
+        illustrationSetDigest: project.design?.illustrationSetDigest,
+        preview: project.designPreview
       }
     },
     primaryOutput: project.primaryOutput,

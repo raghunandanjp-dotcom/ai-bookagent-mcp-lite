@@ -30,9 +30,9 @@ async function generate(count: number, language: "en" | "kn" = "en") {
 
 describe("editable PPTX export", () => {
   for (const count of [1, 5, 11, 20]) {
-    it(`creates exactly ${1 + count * 3} ordered slides for ${count} creatures`, async () => {
+    it(`creates exactly ${2 + count * 3} canonical slides for ${count} creatures`, async () => {
       const { slides } = await generate(count);
-      expect(slides).toHaveLength(1 + count * 3);
+      expect(slides).toHaveLength(2 + count * 3);
       for (let index = 0; index < count; index += 1) {
         const offset = 1 + index * 3;
         expect(slides[offset]).toContain(`Creature ${index + 1}`);
@@ -40,6 +40,7 @@ describe("editable PPTX export", () => {
         expect(slides[offset + 1]).toContain("Fun Fact");
         expect(slides[offset + 2]).toContain("Activity");
       }
+      expect(slides.at(-1)).toContain("Keep Exploring");
     }, 15_000);
   }
 
