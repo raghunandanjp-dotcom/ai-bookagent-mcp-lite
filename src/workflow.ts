@@ -64,6 +64,8 @@ export async function updateCreatureSelection(
   const project = await loadProject(projectDir);
   const creatures = z.array(creatureSchema).parse(creaturesInput);
   const selection = beginSelection(creatures, project.selection, excludePrevious);
+  if (selection === project.selection) return project;
+
   return persistMutation(projectDir, project, {
     stage: "selection_review",
     selection,
