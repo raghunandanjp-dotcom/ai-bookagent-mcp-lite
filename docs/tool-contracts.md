@@ -36,6 +36,8 @@ Accepts the reviewed current DOCX and unlocks PPTX, PDF, and Canva. Acceptance b
 
 Accepts validated replacement content and regenerates DOCX. A project permits at most two reworks. It returns the remaining count and the required warning.
 
+If the reviewed DOCX is open or otherwise locked during replacement, rework fails with the stable `docx_output_locked` export code and instructs the caller to close the DOCX before retrying. The existing DOCX and project state remain unchanged, the temporary package is removed, and the failed attempt does not consume a rework.
+
 A blocking content-validation error prevents document generation.
 
 The DOCX logical page count is:

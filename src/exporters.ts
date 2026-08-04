@@ -50,6 +50,18 @@ export class PdfExportError extends Error {
   }
 }
 
+export class DocxExportError extends Error {
+  constructor(public readonly code: string, message: string) {
+    super(message);
+    this.name = "DocxExportError";
+  }
+}
+
+function isLockedOutputError(error: unknown): boolean {
+  if (!(error instanceof Error) || !("code" in error)) return false;
+  return error.code === "EPERM" || error.code === "EACCES";
+}
+
 function documentFont(language: BookContent["language"]): string {
   return language === "kn" ? "Noto Sans Kannada" : "Arial";
 }
@@ -216,7 +228,17 @@ export async function exportDocx(content: BookContent, exportDir: string): Promi
     packageContents.file("docProps/core.xml", coreProperties.replace("</cp:coreProperties>", `<dc:language>${language}</dc:language></cp:coreProperties>`));
     buffer = await packageContents.generateAsync({ type: "nodebuffer", compression: "DEFLATE" });
     await writeFile(temporaryPath, buffer, { flag: "wx" });
-    await rename(temporaryPath, outputPath);
+    try {
+      await rename(temporaryPath, outputPath);
+    } catch (error) {
+      if (isLockedOutputError(error)) {
+        throw new DocxExportError(
+          "docx_output_locked",
+          "The reviewed DOCX is open or locked. Close it in Microsoft Word or any other application, then retry rework_primary_output."
+        );
+      }
+      throw error;
+    }
   } catch (error) {
     await rm(temporaryPath, { force: true });
     throw error;
@@ -382,7 +404,8 @@ export async function exportSelectedFormats(
       if (format === "pptx") records.push(await exportPptx(content, exportDir, context));
       if (format === "pdf") records.push(await exportPdf(content, exportDir));
     } catch (error) {
-      failures.push({ format, code: error instanceof PdfExportError ? error.code : `${format}_export_failed`, message: error instanceof Error ? error.message : String(error) });
+      const structuredError = error instanceof DocxExportError || error instanceof PdfExportError;
+      failures.push({ format, code: structuredError ? error.code : `${format}_export_failed`, message: error instanceof Error ? error.message : String(error) });
       if (format === "docx") break;
     }
   }

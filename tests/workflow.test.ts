@@ -212,6 +212,34 @@ describe("persisted workflow bookkeeping", () => {
     await expect(reworkPrimaryOutput(projectDir, content)).rejects.toThrow(/maximum of two/i);
   });
 
+  it("preserves project state and rework allowance when the reviewed DOCX is locked", async () => {
+    await initializeProject(projectDir, { title: "Ocean Friends", theme: "ocean creatures", creatureCount: 1 });
+    await updateCreatureSelection(projectDir, [creature]);
+    await approveCreatureSelection(projectDir);
+    await acceptBookContent(projectDir, content);
+    await generateDocuments(projectDir, ["docx"]);
+    const before = await loadProject(projectDir);
+    vi.mocked(exportSelectedFormats).mockResolvedValueOnce({
+      records: [],
+      failures: [{
+        format: "docx",
+        code: "docx_output_locked",
+        message: "The reviewed DOCX is open or locked. Close it in Microsoft Word or any other application, then retry rework_primary_output."
+      }]
+    });
+
+    await expect(reworkPrimaryOutput(projectDir, { ...content, closingNote: "Revised" }))
+      .rejects.toThrow(/close it in Microsoft Word.*retry rework_primary_output/i);
+
+    expect(await loadProject(projectDir)).toEqual(before);
+    expect(before).toMatchObject({
+      reworksUsed: 0,
+      stage: "primary_output_ready",
+      primaryOutput: { status: "ready_for_review" }
+    });
+    expect(before.primaryOutput.sourceRevision).toBe(before.sourceRevision);
+  });
+
   it("requires accepted current DOCX for secondary outputs and Canva", async () => {
     await initializeProject(projectDir, { title: "Ocean Friends", theme: "ocean creatures", creatureCount: 1 });
     await updateCreatureSelection(projectDir, [creature]);
