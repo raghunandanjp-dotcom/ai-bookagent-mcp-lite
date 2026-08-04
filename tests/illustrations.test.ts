@@ -12,7 +12,7 @@ import {
   reviewProjectIllustration,
   updateCreatureSelection
 } from "../src/workflow.ts";
-import { loadProject, resolveInside } from "../src/project.ts";
+import { loadProject, resolveInside, saveProject } from "../src/project.ts";
 import { fixtureIllustrations } from "./fixtures/illustrations.ts";
 import { pptxFixture } from "./fixtures/pptx-content.ts";
 
@@ -30,6 +30,19 @@ async function preparedProject() {
   await acceptBookContent(projectDir, content);
   const source = await fixtureIllustrations(sourceDir, [approved[0]!.id]);
   return { projectDir, content, source };
+}
+
+async function importAndApproveIllustrations(projectDir: string, source: Awaited<ReturnType<typeof fixtureIllustrations>>) {
+  for (const asset of [source.set.cover, ...source.set.creatures.values()]) {
+    await importProjectIllustration(projectDir, {
+      ...metadata,
+      role: asset.role,
+      creatureId: asset.creatureId,
+      sourcePath: asset.absolutePath,
+      altText: asset.altText
+    });
+    await reviewProjectIllustration(projectDir, asset.assetId, true, "Art reviewer");
+  }
 }
 
 const metadata = {
@@ -98,5 +111,37 @@ describe("approved illustration workflow", () => {
     const creatureAsset = project.illustrations.find((asset) => asset.role === "creature")!;
     await writeFile(resolveInside(projectDir, creatureAsset.relativePath), "corrupt image bytes");
     await expect(generateDocuments(projectDir, ["docx"])).rejects.toThrow(/missing, unreadable, or corrupt/i);
+  });
+
+  it("reports missing, unexpected, and digest-mismatched approved illustration sets", async () => {
+    const { projectDir, source } = await preparedProject();
+
+    await expect(generateDocuments(projectDir, ["docx"]))
+      .rejects.toThrow(/cover: expected exactly one illustration asset/i);
+
+    await importAndApproveIllustrations(projectDir, source);
+    const approved = await loadProject(projectDir);
+    await saveProject(projectDir, {
+      ...approved,
+      illustrations: [
+        ...approved.illustrations,
+        {
+          ...approved.illustrations[0]!,
+          assetId: "creature-unexpected",
+          role: "creature",
+          creatureId: "unexpected",
+          altText: "Unexpected creature illustration."
+        }
+      ]
+    });
+    await expect(generateDocuments(projectDir, ["docx"]))
+      .rejects.toThrow(/unexpected illustration slots: creature-unexpected/i);
+
+    const withUnexpected = await loadProject(projectDir);
+    const expectedAssets = withUnexpected.illustrations.filter((asset) => asset.assetId !== "creature-unexpected");
+    expectedAssets[0] = { ...expectedAssets[0]!, sha256: "0".repeat(64) };
+    await saveProject(projectDir, { ...approved, illustrations: expectedAssets });
+    await expect(generateDocuments(projectDir, ["docx"]))
+      .rejects.toThrow(/stored illustration digest does not match the approved asset/i);
   });
 });
