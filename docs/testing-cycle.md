@@ -8,12 +8,20 @@ connector checks remain distinguishable.
 
 | Field | Value |
 | --- | --- |
-| Cycle ID | `TC-2026-08-03-01` |
-| Baseline commit | `aaf5fb14f25b7fb78826903a1de5a20e52fec2a6` |
+| Cycle ID | `TC-2026-08-04-01` |
+| Baseline commit | `6b518ade73600204e1e171a6c3fb3fd7d5ada6f5` plus the test-only working-tree additions recorded below |
 | Branch | `main` |
-| Started | 2026-08-03 (Asia/Calcutta) |
+| Started | 2026-08-04 (Asia/Calcutta) |
 | Runtime | Node.js 24.14.1 on Windows |
-| Overall status | In progress: automated and PDF gates pass; DOCX/PPTX visual and human QA remain |
+| Overall status | In progress: 87 automated tests and core smoke pass; DOCX/PPTX visual, English/Kannada human QA, and Canva end-to-end remain |
+
+## How to maintain this document
+
+- Give every durable test case a stable ID. Do not reuse an ID after a test is retired.
+- Append every meaningful execution to the execution log, including blocked runs and test-harness failures. Record product failures separately from environment or harness failures.
+- When a test exposes a defect, add it to the defect and fix register, link the issue, and record the fixing PR and a one-line fix summary. Keep the defect row after resolution.
+- Use `Passed`, `Failed`, `Blocked`, `Pending`, or `Not run` for test results. A blocked test is not a pass.
+- Update the baseline commit and release-candidate tracker whenever a new release candidate is selected.
 
 ## Test inventory
 
@@ -24,24 +32,41 @@ for non-portable user-specific paths.
 | Area | Suite | Tests | What it covers |
 | --- | --- | ---: | --- |
 | Canva | `tests/canva.test.ts` | 12 | Readiness states, decline, consent, retry, Kannada payload, connector result validation |
-| Workflow | `tests/workflow.test.ts` | 6 | Revisions, Canva mutations, rework limit, DOCX acceptance gates, age iteration, partial export failure |
+| Workflow | `tests/workflow.test.ts` | 8 | Revisions, idempotent selection persistence, Canva mutations, rework and lock behavior, DOCX acceptance gates, age iteration, partial export failure |
 | Content validation | `tests/validation.test.ts` | 6 | Creature coverage, fact review, approved creatures, page count, overflow, Kannada fields |
 | Delivery summary | `tests/delivery-summary.test.ts` | 9 | Fact/language review status, next choices, totals, Canva decline and retry |
-| DOCX and PDF export | `tests/exporters.test.ts` | 14 | Embedded media, alt metadata, digest reuse, forbidden-copy checks, DOCX structure and replacement, PDF tags/fonts/overflow/failure isolation |
-| Illustration workflow | `tests/illustrations.test.ts` | 2 | Prompt slots, import metadata, approval gate, unsupported/corrupt asset rejection |
+| DOCX and PDF export | `tests/exporters.test.ts` | 16 | Embedded media, alt metadata, digest reuse, forbidden-copy checks, DOCX structure and replacement, both Windows lock errors, PDF tags/fonts/overflow/failure isolation |
 | PPTX export | `tests/pptx-export.test.ts` | 6 | Slide counts at 1/5/11/20 creatures, editability, metadata, accessibility, Kannada font warning |
 | PPTX validation | `tests/pptx-validation.test.ts` | 6 | Age-band density boundaries, line/section overflow, Kannada font warning |
 | Poem rules | `tests/poems.test.ts` | 7 | Age defaults, line normalization, repeated-stanza detection |
 | Language | `tests/language.test.ts` | 4 | Kannada normalization, mixed Latin detection, digits/marks, English briefs for Kannada output |
-| Project state | `tests/project.test.ts` | 4 | Mandatory DOCX, path containment, legacy manifests, malformed Canva state |
-| Creature selection | `tests/selection.test.ts` | 3 | Batch size, alias reuse, regeneration limit |
+| Illustration workflow | `tests/illustrations.test.ts` | 3 | Prompt slots, import metadata, approval gate, unsupported/corrupt assets, missing/unexpected slots, digest mismatch |
+| Project state | `tests/project.test.ts` | 5 | Mandatory DOCX, path containment, absolute MCP project directories, legacy manifests, malformed Canva state |
+| Creature selection | `tests/selection.test.ts` | 5 | Batch size, alias reuse, regeneration limit, normalized idempotent retry, order-sensitive regeneration |
 | Core smoke | `scripts/smoke-core.mts` | 1 script | Representative end-to-end domain flow using the checked-in ocean example |
 | DOCX render QA | `scripts/render-docx-qa.mjs` | 4 sizes | Generates 1/5/11/20-creature DOCX files and rasterizes them when LibreOffice and Poppler are present |
 | PDF render QA | `scripts/render-pdf-qa.mjs` | 4 sizes | Generates 1/5/11/20-creature PDFs and rasterizes them when Poppler is present |
 | PPTX render QA | `scripts/render-pptx-qa.mjs` | 4 sizes | Generates 1/5/11/20-creature decks and rasterizes them when LibreOffice and Poppler are present |
 
-Vitest currently contains **79 automated tests across 12 suites**. The fixture
+Vitest currently contains **87 automated tests across 12 suites**. The fixture
 file `tests/fixtures/pptx-content.ts` supplies test data and is not a test suite.
+
+## Latest-change validation matrix
+
+| Test ID | Change / risk | Test level | Expected result | Current result | Related defect or enhancement | Fix |
+| --- | --- | --- | --- | --- | --- | --- |
+| `SEL-001` | Same ordered normalized creature IDs are retried | Unit | Original selection object, approval, history, and regeneration count are preserved | Passed in R17 | [#24](https://github.com/raghunandanjp-dotcom/ai-bookagent-mcp-lite/issues/24), resolved | [PR #28](https://github.com/raghunandanjp-dotcom/ai-bookagent-mcp-lite/pull/28): make identical submissions idempotent |
+| `SEL-002` | Creature IDs are reordered | Unit | Submission is treated as a genuine regeneration | Passed in R17 | [#24](https://github.com/raghunandanjp-dotcom/ai-bookagent-mcp-lite/issues/24), resolved | [PR #28](https://github.com/raghunandanjp-dotcom/ai-bookagent-mcp-lite/pull/28) |
+| `SEL-003` | Identical selection is submitted twice through persisted workflow | Integration | No revision, source revision, approval, history, or allowance changes | Passed in R17 | [#24](https://github.com/raghunandanjp-dotcom/ai-bookagent-mcp-lite/issues/24), resolved | [PR #28](https://github.com/raghunandanjp-dotcom/ai-bookagent-mcp-lite/pull/28) |
+| `LOCK-001` | Atomic DOCX replacement returns `EPERM` | Integration | Stable `docx_output_locked`; original file and temporary-file hygiene preserved | Passed in R17 | [#25](https://github.com/raghunandanjp-dotcom/ai-bookagent-mcp-lite/issues/25), resolved | [PR #29](https://github.com/raghunandanjp-dotcom/ai-bookagent-mcp-lite/pull/29): translate Windows file-lock failures and preserve the reviewed file |
+| `LOCK-002` | Atomic DOCX replacement returns `EACCES` | Integration | Same stable failure contract as `LOCK-001` | Passed in R17 | [#25](https://github.com/raghunandanjp-dotcom/ai-bookagent-mcp-lite/issues/25), resolved | [PR #29](https://github.com/raghunandanjp-dotcom/ai-bookagent-mcp-lite/pull/29) |
+| `LOCK-003` | Rework fails because reviewed DOCX is locked | Workflow | Project revision, source revision, primary status, and both rework allowances remain unchanged | Passed in R17 | [#25](https://github.com/raghunandanjp-dotcom/ai-bookagent-mcp-lite/issues/25), resolved | [PR #29](https://github.com/raghunandanjp-dotcom/ai-bookagent-mcp-lite/pull/29) |
+| `ILL-001` | Prompt, import, approval, and export gate | Workflow | One cover plus one asset per creature; export blocked until all are approved | Passed in R17 | [#26](https://github.com/raghunandanjp-dotcom/ai-bookagent-mcp-lite/issues/26), completed | [PR #30](https://github.com/raghunandanjp-dotcom/ai-bookagent-mcp-lite/pull/30): checksum-bound approved artwork across outputs |
+| `ILL-002` | Unsupported or corrupt image | Negative integration | Import or export fails with a specific validation error | Passed in R17 | [#26](https://github.com/raghunandanjp-dotcom/ai-bookagent-mcp-lite/issues/26), completed | [PR #30](https://github.com/raghunandanjp-dotcom/ai-bookagent-mcp-lite/pull/30) |
+| `ILL-003` | Missing, unexpected, or digest-mismatched approved set | Negative integration | Export fails before producing a document and identifies the invalid slot/state | Passed in R17 | [#26](https://github.com/raghunandanjp-dotcom/ai-bookagent-mcp-lite/issues/26), completed | [PR #30](https://github.com/raghunandanjp-dotcom/ai-bookagent-mcp-lite/pull/30) |
+| `ILL-004` | DOCX/PPTX/PDF embed approved artwork | Structural integration | Correct media relationships, accessibility metadata, digest reuse, and no production labels | Passed in R17; PDF visual QA passed in R13 | [#26](https://github.com/raghunandanjp-dotcom/ai-bookagent-mcp-lite/issues/26), completed | [PR #30](https://github.com/raghunandanjp-dotcom/ai-bookagent-mcp-lite/pull/30) |
+| `ILL-005` | Canva handoff references approved artwork | Contract | Exact checksum-bound assets and page references; no internal production copy | Passed in R17 | [#26](https://github.com/raghunandanjp-dotcom/ai-bookagent-mcp-lite/issues/26), completed | [PR #30](https://github.com/raghunandanjp-dotcom/ai-bookagent-mcp-lite/pull/30) |
+| `ILL-006` | 1/5/11/20-creature output boundaries | Structural and visual | Deterministic DOCX/PPTX/PDF counts and proportional, unobstructed artwork | Automated and PDF visual passed; DOCX/PPTX visual blocked by `TST-002` | [#26](https://github.com/raghunandanjp-dotcom/ai-bookagent-mcp-lite/issues/26), completed | [PR #30](https://github.com/raghunandanjp-dotcom/ai-bookagent-mcp-lite/pull/30) |
 
 ## Execution log
 
@@ -60,6 +85,12 @@ file `tests/fixtures/pptx-content.ts` supplies test data and is not a test suite
 | R11 | `npm run test:smoke` for ENH-0008 | Passed | The ocean example produced the authoritative six illustration prompt slots: one cover plus five creatures. |
 | R12 | DOCX/PPTX/PDF 1/5/11/20 fixture generation | Passed | Every format generated all four boundary sizes with embedded approved fixture artwork. DOCX/PPTX rasterization remains unavailable because LibreOffice is not installed. |
 | R13 | Direct Poppler PDF rasterization and visual inspection | Passed | Rendered exactly 4/16/34/61 pages. Contact-sheet review covered all 115 pages; full-size review covered the complete 1-creature sequence and the last 20-creature page. Artwork remained proportional and unobstructed, text stayed searchable/visible, and no production labels appeared. |
+| R14 | `npm test -- --run ...` from PowerShell | Blocked | Windows execution policy rejected `npm.ps1` before the project ran. Subsequent commands use `npm.cmd`; this is an environment launcher issue, not a product failure. |
+| R15 | Targeted latest-change regression run through `npm.cmd` | Failed (test harness) | 49/50 product assertions passed. The new unexpected-slot setup attempted to use the public import API, which correctly rejected a creature outside the book before export validation. The test was corrected to inject a malformed persisted manifest at the validator boundary. |
+| R16 | `npm.cmd test -- --run tests/illustrations.test.ts` after harness correction | Passed | 3/3 illustration workflow tests passed, including missing, unexpected, and digest-mismatch validation. |
+| R17 | `npm.cmd run check` | Passed | TypeScript build, entrypoints, 87/87 tests across 12/12 suites, and portability scan passed. Includes PR #28, #29, and #30 regression coverage. |
+| R18 | `npm.cmd run test:smoke` | Passed | Representative ocean-example domain flow passed after the expanded regression suite. |
+| R19 | Existing English artifact eligibility check (`.claude-tests/cld-eng-01`) | Not reusable for current gate | The saved five-creature run predates ENH-0008 (`schemaVersion: 1.0`), has no approved-illustration manifest, and retains `needs_review` reader content. Its files remain preserved as historical evidence, but a current-baseline English run is still required. |
 
 ## Findings and actions
 
@@ -69,6 +100,20 @@ file `tests/fixtures/pptx-content.ts` supplies test data and is not a test suite
 | `TST-002` | Medium | Open | LibreOffice is unavailable, preventing reference rendering of DOCX and PPTX outputs locally. | Run release-candidate visual QA on a machine with LibreOffice and Poppler, or install LibreOffice before that gate. |
 | `TST-003` | Medium | Pending | Kannada content requires fluent human language review and rendered-glyph review. Automated script checks are necessary but insufficient. | Perform once on the final representative Kannada artifact, after automated checks pass. |
 | `TST-004` | Medium | Pending | A real Canva handoff requires authorization, consent, edit-link validation, and visual review in Canva. | Perform one end-to-end handoff only after local artifact QA passes. |
+| `TST-005` | Low | Pending | The existing English Claude artifact predates the mandatory approved-illustration workflow and cannot qualify as current release-candidate evidence. | Run one five-creature English happy path on the final baseline and retain its request, reviewed content, illustration approvals, manifest, and outputs. |
+
+## Defect and fix register
+
+| Defect / change | Status | Detected or covered by | Fix PR | Fix summary |
+| --- | --- | --- | --- | --- |
+| `TST-001`: stale smoke page count | Resolved | R4, R6 | [PR #22](https://github.com/raghunandanjp-dotcom/ai-bookagent-mcp-lite/pull/22) | Correct the expected total to include the non-empty closing-note page. |
+| [#24](https://github.com/raghunandanjp-dotcom/ai-bookagent-mcp-lite/issues/24) / `BUG-0006`: identical selection retries consumed state | Resolved | `SEL-001` to `SEL-003` | [PR #28](https://github.com/raghunandanjp-dotcom/ai-bookagent-mcp-lite/pull/28) | Compare ordered normalized IDs and return the existing state for a no-op retry. |
+| [#25](https://github.com/raghunandanjp-dotcom/ai-bookagent-mcp-lite/issues/25) / `BUG-0007`: locked DOCX rework surfaced a raw filesystem failure | Resolved | `LOCK-001` to `LOCK-003` | [PR #29](https://github.com/raghunandanjp-dotcom/ai-bookagent-mcp-lite/pull/29) | Convert `EPERM`/`EACCES` to an actionable stable error without changing the file or project state. |
+| [#26](https://github.com/raghunandanjp-dotcom/ai-bookagent-mcp-lite/issues/26) / `ENH-0008`: final outputs lacked approved illustrations | Completed | `ILL-001` to `ILL-006` | [PR #30](https://github.com/raghunandanjp-dotcom/ai-bookagent-mcp-lite/pull/30) | Add reviewed, checksum-bound artwork and reuse it across DOCX, PPTX, PDF, and Canva. |
+| `TST-002`: DOCX/PPTX reference rendering unavailable locally | Open | `ILL-006` | None | Install/use LibreOffice and run both visual QA scripts before release. |
+| `TST-003`: Kannada human language and glyph validation outstanding | Pending | Release gate | None | Obtain fluent reviewer sign-off on the final representative artifact. |
+| `TST-004`: real Canva authorization and edit-link flow outstanding | Pending | Release gate | None | Complete one consented end-to-end connector handoff and visual review. |
+| `TST-005`: prior English artifact is not current-baseline evidence | Pending | R19 | None | Repeat the English happy path after ENH-0008 and complete content/art review. |
 
 ## Lean test sequence for the Claude free tier
 
@@ -101,7 +146,7 @@ generate content where model behavior itself is under test.
 | Clean dependency install | Passed | Lockfile-based install completes |
 | TypeScript build | Passed | `npm run build` |
 | Entrypoints | Passed | `npm run check:entrypoints` |
-| Automated tests | Passed | 79/79 tests |
+| Automated tests | Passed | 87/87 tests |
 | Portability | Passed | `npm run check:paths` |
 | Core smoke | Passed | Representative ocean-example flow passes with a 17-page total |
 | PDF structural/render QA | Passed | 4/16/34/61 pages rendered; representative smallest and largest pages visually inspected |

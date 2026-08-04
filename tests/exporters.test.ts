@@ -151,7 +151,7 @@ describe("DOCX exporter", () => {
     expect(await readdir(directory)).toEqual(expect.arrayContaining([second.relativePath]));
   });
 
-  it("reports an actionable error and preserves the original DOCX when replacement is locked", async () => {
+  it.each(["EPERM", "EACCES"])("reports an actionable error and preserves the original DOCX when replacement fails with %s", async (errorCode) => {
     const directory = await mkdtemp(path.join(os.tmpdir(), "bookagent-reexport-locked-"));
     const illustrationDirectory = await mkdtemp(path.join(os.tmpdir(), "bookagent-reexport-locked-art-"));
     temporaryDirectories.push(directory);
@@ -160,7 +160,7 @@ describe("DOCX exporter", () => {
     const outputPath = path.join(directory, "ocean-friends.docx");
     const original = Buffer.from("reviewed original DOCX");
     await writeFile(outputPath, original);
-    vi.mocked(rename).mockRejectedValueOnce(Object.assign(new Error("operation not permitted"), { code: "EPERM" }));
+    vi.mocked(rename).mockRejectedValueOnce(Object.assign(new Error("DOCX replacement denied"), { code: errorCode }));
 
     const result = await exportSelectedFormats({ ...content, closingNote: "A revised closing note." }, directory, ["docx"], set);
 
