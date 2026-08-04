@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { mkdtemp, readFile, readdir, rename, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -6,6 +7,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { getDocument } from "pdfjs-dist/legacy/build/pdf.mjs";
 import type { BookContent } from "../src/domain.ts";
 import { exportDocx, exportPdf, exportSelectedFormats } from "../src/exporters.ts";
+import { fixtureIllustrations } from "./fixtures/illustrations.ts";
 
 const { renameMock } = vi.hoisted(() => ({ renameMock: vi.fn() }));
 
@@ -51,23 +53,26 @@ afterEach(async () => {
 async function documentParts(book = content) {
   const directory = await mkdtemp(path.join(os.tmpdir(), "bookagent-docx-"));
   temporaryDirectories.push(directory);
-  const record = await exportDocx(book, directory);
+  const { set } = await fixtureIllustrations(directory, book.creatures.map((creature) => creature.creatureId));
+  const record = await exportDocx(book, directory, set);
   const data = await readFile(path.join(directory, record.relativePath));
   const zip = await JSZip.loadAsync(data);
   const part = async (name: string) => zip.file(name)?.async("string") ?? "";
-  return { record, data, document: await part("word/document.xml"), styles: await part("word/styles.xml"), core: await part("docProps/core.xml") };
+  return { record, data, zip, document: await part("word/document.xml"), styles: await part("word/styles.xml"), core: await part("docProps/core.xml") };
 }
 
 describe("DOCX exporter", () => {
-  it("emits the approved page model, hierarchy, poem structure, placeholders, and metadata", async () => {
+  it("embeds approved artwork with accessibility metadata and no production labels", async () => {
     const result = await documentParts();
 
     expect(result.record.bytes).toBe(result.data.byteLength);
     expect(result.document.match(/<w:pageBreakBefore\/>/g)).toHaveLength(4);
     expect(result.document).toContain('<w:pgSz w:w="11906" w:h="16838"');
     expect(result.document).toContain('<w:pgMar w:top="1134" w:right="1134" w:bottom="1134" w:left="1134"');
-    expect(result.document.match(/Illustration placeholder/g)).toHaveLength(3);
-    expect(result.document.match(/Accessible description:/g)).toHaveLength(3);
+    expect(result.document.match(/<w:drawing>/g)).toHaveLength(4);
+    expect(result.document).toContain('descr="A colorful scene introducing the creatures."');
+    expect(result.document).toContain('descr="octopus in a colorful habitat."');
+    expect(result.document).not.toMatch(/Illustration (?:placeholder|brief|direction|idea)|Accessible description:|Alternative text:/iu);
     expect(result.document).toContain("Review required before publication.");
     expect(result.document).toContain("Waving Arms");
     for (const line of ["First line", "Second line", "Third line", "Fourth line", "Fifth line", "Sixth line"]) {
@@ -83,6 +88,10 @@ describe("DOCX exporter", () => {
     expect(result.core).toContain("<dc:language>en-US</dc:language>");
     expect(result.core).toContain("ages 6-8; en-US; 1 creatures");
     expect(`${result.document}${result.styles}${result.core}`).not.toMatch(/[A-Z]:\\Users\\/i);
+    const media = Object.entries(result.zip.files).filter(([name, entry]) => name.startsWith("word/media/") && !entry.dir);
+    expect(media).toHaveLength(2);
+    const digests = await Promise.all(media.map(async ([, entry]) => createHash("sha256").update(await entry.async("nodebuffer")).digest("hex")));
+    expect(new Set(digests).size).toBe(2);
   });
 
   it("declares Kannada language and font without affecting English defaults", async () => {
@@ -123,32 +132,37 @@ describe("DOCX exporter", () => {
     };
     const result = await documentParts(scaled);
     expect(result.document.match(/<w:pageBreakBefore\/>/g)).toHaveLength(creatureCount * 3);
-  });
+  }, 15_000);
 
   it("always includes DOCX when only optional formats are requested", async () => {
     const directory = await mkdtemp(path.join(os.tmpdir(), "bookagent-formats-"));
     temporaryDirectories.push(directory);
-    const result = await exportSelectedFormats(content, directory, []);
+    const { set } = await fixtureIllustrations(directory, ["octopus"]);
+    const result = await exportSelectedFormats(content, directory, [], set);
     expect(result.records.map((record) => record.format)).toEqual(["docx"]);
   });
 
   it("replaces an existing DOCX export without leaving temporary packages", async () => {
     const directory = await mkdtemp(path.join(os.tmpdir(), "bookagent-reexport-"));
     temporaryDirectories.push(directory);
-    await exportDocx(content, directory);
-    const second = await exportDocx({ ...content, closingNote: "A revised closing note." }, directory);
-    expect(await readdir(directory)).toEqual([second.relativePath]);
+    const { set } = await fixtureIllustrations(directory, ["octopus"]);
+    await exportDocx(content, directory, set);
+    const second = await exportDocx({ ...content, closingNote: "A revised closing note." }, directory, set);
+    expect(await readdir(directory)).toEqual(expect.arrayContaining([second.relativePath]));
   });
 
   it("reports an actionable error and preserves the original DOCX when replacement is locked", async () => {
     const directory = await mkdtemp(path.join(os.tmpdir(), "bookagent-reexport-locked-"));
+    const illustrationDirectory = await mkdtemp(path.join(os.tmpdir(), "bookagent-reexport-locked-art-"));
     temporaryDirectories.push(directory);
+    temporaryDirectories.push(illustrationDirectory);
+    const { set } = await fixtureIllustrations(illustrationDirectory, ["octopus"]);
     const outputPath = path.join(directory, "ocean-friends.docx");
     const original = Buffer.from("reviewed original DOCX");
     await writeFile(outputPath, original);
     vi.mocked(rename).mockRejectedValueOnce(Object.assign(new Error("operation not permitted"), { code: "EPERM" }));
 
-    const result = await exportSelectedFormats({ ...content, closingNote: "A revised closing note." }, directory, ["docx"]);
+    const result = await exportSelectedFormats({ ...content, closingNote: "A revised closing note." }, directory, ["docx"], set);
 
     expect(result).toEqual({
       records: [],
@@ -167,7 +181,8 @@ describe("PDF exporter", () => {
   it("creates one cover and three section pages while excluding the optional closing note", async () => {
     const directory = await mkdtemp(path.join(os.tmpdir(), "bookagent-pdf-"));
     temporaryDirectories.push(directory);
-    const record = await exportPdf(content, directory);
+    const { set } = await fixtureIllustrations(directory, ["octopus"]);
+    const record = await exportPdf(content, directory, set);
     const raw = await readFile(path.join(directory, record.relativePath));
     const document = await getDocument({ data: new Uint8Array(raw), useSystemFonts: false }).promise;
     expect(document.numPages).toBe(4);
@@ -180,16 +195,19 @@ describe("PDF exporter", () => {
     expect(text[0]).toContain("Ocean Friends");
     expect(text[1]).toContain("Waving Arms");
     expect(text[2]).toContain("three hearts");
-    expect(text[3]).toContain("Illustration idea");
+    expect(text.join(" ")).not.toMatch(/Illustration (?:placeholder|brief|direction|idea)|Accessible description:|Alternative text:/iu);
     expect(text.join(" ")).not.toContain(content.closingNote);
     expect(raw.toString("latin1")).toMatch(/\/FontFile[23]\b/);
+    expect(raw.toString("latin1")).toContain("/StructTreeRoot");
+    expect(raw.toString("latin1")).toContain("/Alt");
   });
 
   it("reports a missing Kannada font without losing mandatory DOCX", async () => {
     const directory = await mkdtemp(path.join(os.tmpdir(), "bookagent-pdf-"));
     temporaryDirectories.push(directory);
     delete process.env.BOOK_AGENT_KANNADA_FONT_PATH;
-    const result = await exportSelectedFormats({ ...content, language: "kn" }, directory, ["pdf"]);
+    const { set } = await fixtureIllustrations(directory, ["octopus"]);
+    const result = await exportSelectedFormats({ ...content, language: "kn" }, directory, ["pdf"], set);
     expect(result.records.map((record) => record.format)).toEqual(["docx"]);
     expect(result.failures).toMatchObject([{ format: "pdf", code: "pdf_font_missing" }]);
   });
@@ -201,7 +219,8 @@ describe("PDF exporter", () => {
       ...content,
       creatures: [{ ...content.creatures[0]!, funFact: { ...content.creatures[0]!.funFact, text: "A very long fact. ".repeat(800) } }]
     };
-    await expect(exportPdf(overflowing, directory)).rejects.toMatchObject({ code: "pdf_text_overflow" });
+    const { set } = await fixtureIllustrations(directory, ["octopus"]);
+    await expect(exportPdf(overflowing, directory, set)).rejects.toMatchObject({ code: "pdf_text_overflow" });
     await expect(readFile(path.join(directory, "ocean-friends.pdf"))).rejects.toMatchObject({ code: "ENOENT" });
   });
 });

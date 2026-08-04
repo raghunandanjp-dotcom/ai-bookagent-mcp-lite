@@ -79,6 +79,7 @@ describe("delivery summary review status", () => {
     expect(summary.review.content.status).toBe("complete");
     expect(summary.review.content.outstandingCount).toBe(0);
     expect(summary.review.content.issues).toEqual([]);
+    expect(summary.review.illustrations).toEqual({ required: 2, imported: 0, approved: 0, status: "required" });
   });
 
   it("reports Kannada language review separately from factual review", () => {

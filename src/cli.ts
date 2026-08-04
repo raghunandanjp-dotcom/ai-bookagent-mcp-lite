@@ -6,10 +6,13 @@ import {
   acceptPrimaryOutput,
   approveCreatureSelection,
   createPromptPackage,
+  createIllustrationPromptPackage,
   deliverySummary,
   generateDocuments,
   initializeProject,
+  importProjectIllustration,
   reworkPrimaryOutput,
+  reviewProjectIllustration,
   updateCreatureSelection
 } from "./workflow.ts";
 import { loadProject } from "./project.ts";
@@ -20,6 +23,9 @@ function usage(): never {
   ai-bookagent select <project-dir> <creatures.json> [--exclude-previous]
   ai-bookagent approve <project-dir>
   ai-bookagent prompt <project-dir>
+  ai-bookagent illustration-prompts <project-dir>
+  ai-bookagent import-illustration <project-dir> <asset.json>
+  ai-bookagent review-illustration <project-dir> <review.json>
   ai-bookagent content <project-dir> <content.json>
   ai-bookagent export <project-dir> [docx,pptx,pdf]
   ai-bookagent accept-docx <project-dir>
@@ -41,6 +47,12 @@ if (command === "init" && argument) result = await initializeProject(absolutePro
 else if (command === "select" && argument) result = await updateCreatureSelection(absoluteProjectDir, await jsonFile(argument), flag === "--exclude-previous");
 else if (command === "approve") result = await approveCreatureSelection(absoluteProjectDir);
 else if (command === "prompt") result = await createPromptPackage(absoluteProjectDir);
+else if (command === "illustration-prompts") result = await createIllustrationPromptPackage(absoluteProjectDir);
+else if (command === "import-illustration" && argument) result = await importProjectIllustration(absoluteProjectDir, await jsonFile(argument));
+else if (command === "review-illustration" && argument) {
+  const review = await jsonFile(argument) as { assetId: string; approved: boolean; reviewedBy: string; note?: string };
+  result = await reviewProjectIllustration(absoluteProjectDir, review.assetId, review.approved, review.reviewedBy, review.note);
+}
 else if (command === "content" && argument) result = await acceptBookContent(absoluteProjectDir, await jsonFile(argument));
 else if (command === "export") result = await generateDocuments(absoluteProjectDir, argument?.split(",") as Array<"docx" | "pptx" | "pdf"> | undefined);
 else if (command === "accept-docx") result = await acceptPrimaryOutput(absoluteProjectDir);

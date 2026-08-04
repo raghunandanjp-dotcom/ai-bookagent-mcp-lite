@@ -11,7 +11,7 @@ Canva is an optional second phase. The project does not install connectors, perf
 5. If unavailable or unauthorized, show the corresponding setup instructions and pause.
 6. Present host-provided design choices and record the user's selection.
 7. Ask for explicit consent for that design and source revision.
-8. Create a neutral handoff payload.
+8. Revalidate the complete approved illustration set and create a neutral handoff payload.
 9. Let the host invoke the connector exposed by its environment.
 10. Record either a structured connector failure or the returned design ID and genuine Canva edit URL.
 
@@ -33,7 +33,7 @@ A declined handoff remains a completed local delivery and can be restarted with 
 
 ## Neutral connector boundary
 
-`prepare_canva_handoff` returns versioned data with `operation: "create_editable_design"`, project/revision correlation, the selected design, and the reviewed pages. It never calls Canva. A host-specific adapter maps this payload to the currently exposed connector tool and returns one of:
+`prepare_canva_handoff` returns versioned data with `operation: "create_editable_design"`, project/revision correlation, the selected design, the reviewed pages, and the same approved asset records used by DOCX/PPTX/PDF. Every record carries a project-relative path, MIME type, dimensions, byte count, digest, reviewed alternative text, source, provenance, and license. Pages reference stable `illustrationAssetId` values; they never contain raw prompts or illustration briefs. The adapter must upload those exact bytes and must not silently regenerate, replace, or substitute artwork. The local core never calls Canva itself. A host-specific adapter maps this payload to the currently exposed connector tool and returns one of:
 
 ```json
 { "outcome": "success", "designId": "DAG...", "editUrl": "https://www.canva.com/design/DAG.../edit" }

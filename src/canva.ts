@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { LIMITS, type BookContent, type BookRequest } from "./domain.ts";
+import { LIMITS, type BookContent, type BookRequest, type IllustrationAsset } from "./domain.ts";
 import type { CanvaState } from "./project.ts";
 import { normalizePoemText } from "./poems.ts";
 
@@ -80,16 +80,27 @@ function canvaSectionTitle(language: BookRequest["language"], section: "poem" | 
   return section === "poem" ? "Poem" : section === "funFact" ? "Fun Fact" : "Activity";
 }
 
-export function prepareCanvaHandoff(projectId: string, revision: number, request: BookRequest, content: BookContent, canva: CanvaState) {
+export function prepareCanvaHandoff(
+  projectId: string,
+  revision: number,
+  request: BookRequest,
+  content: BookContent,
+  illustrations: IllustrationAsset[],
+  canva: CanvaState
+) {
   if (canva.status !== "consented" && !(canva.status === "failed" && canva.failure?.retryable && canva.consentedAt)) {
     throw new Error("Explicit Canva consent is required before preparing the handoff.");
   }
   if (!canva.selection || canva.selection.sourceRevision !== canva.sourceRevision) {
     throw new Error("A Canva design must be selected for the current source revision.");
   }
+  const requiredAssetIds = ["cover", ...content.creatures.map((creature) => `creature-${creature.creatureId}`)];
+  if (illustrations.length !== requiredAssetIds.length || requiredAssetIds.some((assetId) => illustrations.filter((asset) => asset.assetId === assetId && asset.approvalStatus === "approved").length !== 1)) {
+    throw new Error("Every required cover and creature illustration must be uniquely approved before preparing the Canva handoff.");
+  }
   const slideCount = 1 + content.creatures.length * 3;
   return {
-    handoffVersion: "1.0",
+    handoffVersion: "1.1",
     operation: "create_editable_design",
     correlation: { projectId, revision },
     sourceRevision: canva.sourceRevision,
@@ -126,8 +137,23 @@ export function prepareCanvaHandoff(projectId: string, revision: number, request
     instruction: request.language === "kn"
       ? "Create an editable children's presentation in Kannada. Preserve every supplied Kannada character and intentional poem line/stanza break. Use a Kannada-capable editable font, preferably Noto Sans Kannada; never transliterate, replace, or rasterize the text. Use large readable type, strong contrast, consistent creature illustration treatment, and one poem, fun fact, and activity slide per creature. Return a structured failure if Kannada glyph coverage cannot be preserved."
       : "Create an editable children's presentation. Preserve all supplied text and intentional poem line/stanza breaks, use large readable type, strong contrast, consistent creature illustration treatment, and one poem, fun fact, and activity slide per creature.",
+    illustrations: requiredAssetIds.map((assetId) => illustrations.find((asset) => asset.assetId === assetId)!).map((asset) => ({
+      assetId: asset.assetId,
+      role: asset.role,
+      creatureId: asset.creatureId,
+      relativePath: asset.relativePath,
+      mimeType: asset.mimeType,
+      width: asset.width,
+      height: asset.height,
+      bytes: asset.bytes,
+      sha256: asset.sha256,
+      altText: asset.altText,
+      source: asset.source,
+      provenance: asset.provenance,
+      license: asset.license
+    })),
     pages: [
-      { type: "cover", title: content.title },
+      { type: "cover", title: content.title, illustrationAssetId: "cover" },
       ...content.creatures.flatMap((creature) =>
         (["poem", "funFact", "activity"] as const).map((section) => ({
           type: section,
@@ -136,8 +162,7 @@ export function prepareCanvaHandoff(projectId: string, revision: number, request
           title: `${creature.displayName} — ${canvaSectionTitle(request.language, section)}`,
           body: section === "poem" ? normalizePoemText(creature.poem.text) : creature[section].text,
           ...(section === "poem" ? { poemTitle: creature.poem.title, rhymeScheme: creature.poem.rhymeScheme } : {}),
-          illustrationBrief: creature.illustrationBrief,
-          altText: creature.altText
+          illustrationAssetId: `creature-${creature.creatureId}`
         }))
       )
     ]

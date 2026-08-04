@@ -27,7 +27,8 @@ for non-portable user-specific paths.
 | Workflow | `tests/workflow.test.ts` | 6 | Revisions, Canva mutations, rework limit, DOCX acceptance gates, age iteration, partial export failure |
 | Content validation | `tests/validation.test.ts` | 6 | Creature coverage, fact review, approved creatures, page count, overflow, Kannada fields |
 | Delivery summary | `tests/delivery-summary.test.ts` | 9 | Fact/language review status, next choices, totals, Canva decline and retry |
-| DOCX and PDF export | `tests/exporters.test.ts` | 14 | DOCX structure and replacement, Kannada metadata, mandatory DOCX, PDF structure/fonts/overflow/failure isolation |
+| DOCX and PDF export | `tests/exporters.test.ts` | 14 | Embedded media, alt metadata, digest reuse, forbidden-copy checks, DOCX structure and replacement, PDF tags/fonts/overflow/failure isolation |
+| Illustration workflow | `tests/illustrations.test.ts` | 2 | Prompt slots, import metadata, approval gate, unsupported/corrupt asset rejection |
 | PPTX export | `tests/pptx-export.test.ts` | 6 | Slide counts at 1/5/11/20 creatures, editability, metadata, accessibility, Kannada font warning |
 | PPTX validation | `tests/pptx-validation.test.ts` | 6 | Age-band density boundaries, line/section overflow, Kannada font warning |
 | Poem rules | `tests/poems.test.ts` | 7 | Age defaults, line normalization, repeated-stanza detection |
@@ -35,10 +36,11 @@ for non-portable user-specific paths.
 | Project state | `tests/project.test.ts` | 4 | Mandatory DOCX, path containment, legacy manifests, malformed Canva state |
 | Creature selection | `tests/selection.test.ts` | 3 | Batch size, alias reuse, regeneration limit |
 | Core smoke | `scripts/smoke-core.mts` | 1 script | Representative end-to-end domain flow using the checked-in ocean example |
+| DOCX render QA | `scripts/render-docx-qa.mjs` | 4 sizes | Generates 1/5/11/20-creature DOCX files and rasterizes them when LibreOffice and Poppler are present |
 | PDF render QA | `scripts/render-pdf-qa.mjs` | 4 sizes | Generates 1/5/11/20-creature PDFs and rasterizes them when Poppler is present |
 | PPTX render QA | `scripts/render-pptx-qa.mjs` | 4 sizes | Generates 1/5/11/20-creature decks and rasterizes them when LibreOffice and Poppler are present |
 
-Vitest currently contains **77 automated tests across 11 suites**. The fixture
+Vitest currently contains **79 automated tests across 12 suites**. The fixture
 file `tests/fixtures/pptx-content.ts` supplies test data and is not a test suite.
 
 ## Execution log
@@ -54,6 +56,10 @@ file `tests/fixtures/pptx-content.ts` supplies test data and is not a test suite
 | R7 | `npm run check` after the smoke correction | Passed | Build, entrypoints, 77/77 tests, and portability all passed. |
 | R8 | `npm run qa:pdf:render` plus direct bundled Poppler rasterization | Passed | Generated 1/5/11/20-creature PDFs and rendered exactly 4/16/34/61 PNG pages. The direct executable was used because the bundled command wrapper is miswired. |
 | R9 | Representative PDF visual inspection | Passed | Reviewed all four section types in the 1-creature PDF and the cover, first poem, final fun-fact, and final activity pages in the 20-creature PDF. No clipping, overlap, broken characters, blank pages, footer collisions, or lost stanza breaks were observed. |
+| R10 | `npm run check` for ENH-0008 | Passed | Build and entrypoints passed; 79/79 tests in 12/12 suites passed; portability scan passed. |
+| R11 | `npm run test:smoke` for ENH-0008 | Passed | The ocean example produced the authoritative six illustration prompt slots: one cover plus five creatures. |
+| R12 | DOCX/PPTX/PDF 1/5/11/20 fixture generation | Passed | Every format generated all four boundary sizes with embedded approved fixture artwork. DOCX/PPTX rasterization remains unavailable because LibreOffice is not installed. |
+| R13 | Direct Poppler PDF rasterization and visual inspection | Passed | Rendered exactly 4/16/34/61 pages. Contact-sheet review covered all 115 pages; full-size review covered the complete 1-creature sequence and the last 20-creature page. Artwork remained proportional and unobstructed, text stayed searchable/visible, and no production labels appeared. |
 
 ## Findings and actions
 
@@ -95,7 +101,7 @@ generate content where model behavior itself is under test.
 | Clean dependency install | Passed | Lockfile-based install completes |
 | TypeScript build | Passed | `npm run build` |
 | Entrypoints | Passed | `npm run check:entrypoints` |
-| Automated tests | Passed | 77/77 tests |
+| Automated tests | Passed | 79/79 tests |
 | Portability | Passed | `npm run check:paths` |
 | Core smoke | Passed | Representative ocean-example flow passes with a 17-page total |
 | PDF structural/render QA | Passed | 4/16/34/61 pages rendered; representative smallest and largest pages visually inspected |

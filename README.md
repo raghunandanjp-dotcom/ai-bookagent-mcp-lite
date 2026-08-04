@@ -10,7 +10,7 @@ Each approved creature receives:
 2. A factual fun section
 3. A safe activity
 
-The primary artifact is always DOCX. After reviewing it, the user may rework it (at most twice), accept it and finish, create optional PPTX/PDF secondary outputs, or continue to Canva. Canva is the final optional output.
+The primary artifact is always DOCX. Before it can be generated, the project must contain one reviewed cover illustration and one reviewed illustration per selected creature. A creature's single approved asset is reused on its poem, fun-fact, and activity pages in DOCX, PPTX, PDF, and the Canva handoff. After reviewing DOCX, the user may rework it (at most twice), accept it and finish, create optional PPTX/PDF secondary outputs, or continue to Canva. Canva is the final optional output.
 
 The DOCX page sequence is deterministic: one cover, then one poem page, one fun-fact page, and one activity page for every approved creature. A non-empty closing note adds one final page. The projected page count is therefore `1 + (3 × creatures) + optional closing page`.
 
@@ -43,6 +43,9 @@ brief
   -> optional poem iteration 1 (same age)
   -> optional poem iteration 2 (next age; 12-14 remains unchanged)
   -> validate structured content
+  -> prepare host-assisted illustration prompts or import user artwork
+  -> import one cover and one illustration per creature
+  -> review and approve every illustration
   -> primary DOCX
   -> review: rework (maximum two) or accept
   -> optional PPTX and/or PDF
@@ -110,7 +113,7 @@ also requires `BOOK_AGENT_KANNADA_FONT_PATH` in the user's uncommitted `.env`
 file so the font can be embedded. The exporter fails clearly instead of
 producing a PDF with missing glyphs.
 
-DOCX generation itself remains local and requires no Office installation, cloud conversion, Canva access, or paid API. Optional visual QA uses local LibreOffice and Poppler. Kannada DOCX release QA requires `Noto Sans Kannada` to be installed and remains subject to human language and rendered-glyph review under issue #1.
+DOCX generation itself remains local and requires no Office installation, cloud conversion, Canva access, or paid API. Illustration generation is host-assisted: the connector creates a consistent prompt package but does not call or require a paid image API. Hosts may generate images with an available image tool or import user-supplied PNG/JPEG artwork. Optional visual QA uses local LibreOffice and Poppler. Kannada DOCX release QA requires `Noto Sans Kannada` to be installed and remains subject to human language and rendered-glyph review under issue #1.
 
 PPTX does not embed `Noto Sans Kannada`; Kannada decks therefore include an export warning and require the font on every viewing or editing system.
 
@@ -125,13 +128,16 @@ ai-bookagent approve ./my-book
 ai-bookagent prompt ./my-book
 # A host may call the reiterate_authoring_prompt MCP tool up to twice.
 ai-bookagent content ./my-book ./claude-content.json
+ai-bookagent illustration-prompts ./my-book
+ai-bookagent import-illustration ./my-book ./cover-asset.json
+ai-bookagent review-illustration ./my-book ./cover-review.json
 ai-bookagent export ./my-book docx,pptx,pdf
 ai-bookagent accept-docx ./my-book
 ai-bookagent rework ./my-book ./reworked-content.json
 ai-bookagent summary ./my-book
 ```
 
-Generated files and resumable state stay inside the selected book-project directory. File targets are constrained to that directory.
+Generated files, approved illustrations, provenance, licensing metadata, and resumable state stay inside the selected book-project directory. File targets are constrained to that directory. PNG and JPEG assets are signature-validated, checksum-bound, dimension-checked, and revalidated immediately before export.
 
 ## Canva checkpoint
 
@@ -157,4 +163,4 @@ For Kannada, the Canva payload uses locale `kn-IN`, localized section titles, an
 - Credentials, output packages, raw logs, and local environment files are ignored.
 - Fun facts are marked for review unless a human or approved source supports them.
 
-See [Architecture](docs/architecture.md), [Tool contracts](docs/tool-contracts.md), and [Canva handoff](docs/canva-handoff.md).
+See [Architecture](docs/architecture.md), [Tool contracts](docs/tool-contracts.md), [DOCX generation](docs/docx-generation.md), and [Canva handoff](docs/canva-handoff.md).
