@@ -1,13 +1,21 @@
-import { mkdtemp, readFile, readdir, rm } from "node:fs/promises";
 import { createHash } from "node:crypto";
+import { mkdtemp, readFile, readdir, rename, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import JSZip from "jszip";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { getDocument } from "pdfjs-dist/legacy/build/pdf.mjs";
 import type { BookContent } from "../src/domain.ts";
 import { exportDocx, exportPdf, exportSelectedFormats } from "../src/exporters.ts";
 import { fixtureIllustrations } from "./fixtures/illustrations.ts";
+
+const { renameMock } = vi.hoisted(() => ({ renameMock: vi.fn() }));
+
+vi.mock("node:fs/promises", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("node:fs/promises")>();
+  renameMock.mockImplementation(actual.rename);
+  return { ...actual, rename: renameMock };
+});
 
 const content: BookContent = {
   schemaVersion: "1.1",
@@ -39,6 +47,7 @@ const temporaryDirectories: string[] = [];
 
 afterEach(async () => {
   await Promise.all(temporaryDirectories.splice(0).map((directory) => rm(directory, { recursive: true, force: true })));
+  vi.mocked(rename).mockClear();
 });
 
 async function documentParts(book = content) {
@@ -140,6 +149,31 @@ describe("DOCX exporter", () => {
     await exportDocx(content, directory, set);
     const second = await exportDocx({ ...content, closingNote: "A revised closing note." }, directory, set);
     expect(await readdir(directory)).toEqual(expect.arrayContaining([second.relativePath]));
+  });
+
+  it("reports an actionable error and preserves the original DOCX when replacement is locked", async () => {
+    const directory = await mkdtemp(path.join(os.tmpdir(), "bookagent-reexport-locked-"));
+    const illustrationDirectory = await mkdtemp(path.join(os.tmpdir(), "bookagent-reexport-locked-art-"));
+    temporaryDirectories.push(directory);
+    temporaryDirectories.push(illustrationDirectory);
+    const { set } = await fixtureIllustrations(illustrationDirectory, ["octopus"]);
+    const outputPath = path.join(directory, "ocean-friends.docx");
+    const original = Buffer.from("reviewed original DOCX");
+    await writeFile(outputPath, original);
+    vi.mocked(rename).mockRejectedValueOnce(Object.assign(new Error("operation not permitted"), { code: "EPERM" }));
+
+    const result = await exportSelectedFormats({ ...content, closingNote: "A revised closing note." }, directory, ["docx"], set);
+
+    expect(result).toEqual({
+      records: [],
+      failures: [{
+        format: "docx",
+        code: "docx_output_locked",
+        message: "The reviewed DOCX is open or locked. Close it in Microsoft Word or any other application, then retry rework_primary_output."
+      }]
+    });
+    expect(await readFile(outputPath)).toEqual(original);
+    expect(await readdir(directory)).toEqual(["ocean-friends.docx"]);
   });
 });
 

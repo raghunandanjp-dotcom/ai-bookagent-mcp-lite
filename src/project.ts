@@ -15,6 +15,14 @@ import {
 
 export const PROJECT_SCHEMA_VERSION = "1.1";
 
+function requireAbsoluteProjectDir(projectDir: string): void {
+  if (!path.isAbsolute(projectDir)) {
+    throw new Error(
+      "Project directory must be an absolute path. Select an explicit location before calling this tool."
+    );
+  }
+}
+
 export type ProjectStage =
   | "draft"
   | "selection_review"
@@ -191,6 +199,7 @@ export function parseProject(input: unknown): BookProject {
 }
 
 export async function saveProject(projectDir: string, project: BookProject): Promise<BookProject> {
+  requireAbsoluteProjectDir(projectDir);
   await mkdir(projectDir, { recursive: true });
   const updated: BookProject = { ...project, updatedAt: now() };
   const destination = path.join(projectDir, "book-project.json");
@@ -201,6 +210,7 @@ export async function saveProject(projectDir: string, project: BookProject): Pro
 }
 
 export async function loadProject(projectDir: string): Promise<BookProject> {
+  requireAbsoluteProjectDir(projectDir);
   return parseProject(JSON.parse(await readFile(path.join(projectDir, "book-project.json"), "utf8")));
 }
 

@@ -143,6 +143,35 @@ describe("persisted workflow bookkeeping", () => {
     expect(reloadedExport.exports).toEqual(exported.exports);
   });
 
+  it("does not persist repeated identical creature-selection submissions", async () => {
+    const creatures = ["octopus", "orca", "seal", "walrus", "dolphin"].map((id) => ({
+      ...creature,
+      id,
+      name: id
+    }));
+    await initializeProject(projectDir, {
+      title: "Ocean Friends",
+      theme: "ocean creatures",
+      creatureCount: creatures.length
+    });
+    await updateCreatureSelection(projectDir, creatures);
+    const approved = await approveCreatureSelection(projectDir);
+
+    const firstRetry = await updateCreatureSelection(projectDir, creatures.map((item) => ({ ...item })));
+    const secondRetry = await updateCreatureSelection(projectDir, creatures.map((item) => ({ ...item })));
+
+    expect(firstRetry).toEqual(approved);
+    expect(secondRetry).toEqual(approved);
+    expect(secondRetry).toMatchObject({
+      revision: 3,
+      sourceRevision: 2,
+      stage: "selection_approved",
+      selection: { approved: true, regenerationsUsed: 0 }
+    });
+    expect(secondRetry.selection.history).toHaveLength(1);
+    expect(await loadProject(projectDir)).toEqual(approved);
+  });
+
   it("increments every persisted Canva mutation but not handoff reads", async () => {
     await initializeProject(projectDir, {
       title: "Ocean Friends",
@@ -221,6 +250,35 @@ describe("persisted workflow bookkeeping", () => {
     });
     expect(second).toMatchObject({ reworksRemaining: 0, warning: "No reworks remain." });
     await expect(reworkPrimaryOutput(projectDir, content)).rejects.toThrow(/maximum of two/i);
+  });
+
+  it("preserves project state and rework allowance when the reviewed DOCX is locked", async () => {
+    await initializeProject(projectDir, { title: "Ocean Friends", theme: "ocean creatures", creatureCount: 1 });
+    await updateCreatureSelection(projectDir, [creature]);
+    await approveCreatureSelection(projectDir);
+    await acceptBookContent(projectDir, content);
+    await seedIllustrations(projectDir);
+    await generateDocuments(projectDir, ["docx"]);
+    const before = await loadProject(projectDir);
+    vi.mocked(exportSelectedFormats).mockResolvedValueOnce({
+      records: [],
+      failures: [{
+        format: "docx",
+        code: "docx_output_locked",
+        message: "The reviewed DOCX is open or locked. Close it in Microsoft Word or any other application, then retry rework_primary_output."
+      }]
+    });
+
+    await expect(reworkPrimaryOutput(projectDir, { ...content, closingNote: "Revised" }))
+      .rejects.toThrow(/close it in Microsoft Word.*retry rework_primary_output/i);
+
+    expect(await loadProject(projectDir)).toEqual(before);
+    expect(before).toMatchObject({
+      reworksUsed: 0,
+      stage: "primary_output_ready",
+      primaryOutput: { status: "ready_for_review" }
+    });
+    expect(before.primaryOutput.sourceRevision).toBe(before.sourceRevision);
   });
 
   it("requires accepted current DOCX for secondary outputs and Canva", async () => {

@@ -2,11 +2,11 @@
 
 ## `create_book_project`
 
-Creates the manifest from a theme, title, age band, language, creature count, brief, and requested export formats. Interactive creation requires explicit age and language choices after the initial natural-language prompt. Kannada is presented as experimental and requiring fluent human review and discretion; the user's prompt may remain in English. DOCX is inserted even when omitted.
+Creates the manifest from a theme, title, age band, language, creature count, brief, and requested export formats. `projectDir` must be an absolute path selected by the host; relative paths are rejected before any filesystem mutation so the MCP host's working directory cannot affect the destination. Interactive creation requires explicit age and language choices after the initial natural-language prompt. Kannada is presented as experimental and requiring fluent human review and discretion; the user's prompt may remain in English. DOCX is inserted even when omitted.
 
 ## `set_creature_selection`
 
-Sets the initial list or consumes one of two full-list regenerations. `excludePrevious` applies the cumulative no-reuse ledger. Alias collisions are rejected.
+Sets the initial list or consumes one of two full-list regenerations. A retry with `excludePrevious: false` is idempotent when its ordered sequence of creature IDs matches the current sequence after ID normalization; it does not change approval, history, revisions, or the regeneration allowance. Creature order is significant, so reordering IDs is a regeneration. `excludePrevious` applies the cumulative no-reuse ledger. Alias collisions are rejected.
 
 ## `approve_creature_selection`
 
@@ -47,6 +47,8 @@ Accepts the reviewed current DOCX and unlocks PPTX, PDF, and Canva. Acceptance b
 ## `rework_primary_output`
 
 Accepts validated replacement content and regenerates DOCX. A project permits at most two reworks. It returns the remaining count and the required warning.
+
+If the reviewed DOCX is open or otherwise locked during replacement, rework fails with the stable `docx_output_locked` export code and instructs the caller to close the DOCX before retrying. The existing DOCX and project state remain unchanged, the temporary package is removed, and the failed attempt does not consume a rework.
 
 A blocking content-validation error prevents document generation.
 
