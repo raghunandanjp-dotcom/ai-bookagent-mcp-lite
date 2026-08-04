@@ -134,6 +134,35 @@ describe("persisted workflow bookkeeping", () => {
     expect(reloadedExport.exports).toEqual(exported.exports);
   });
 
+  it("does not persist repeated identical creature-selection submissions", async () => {
+    const creatures = ["octopus", "orca", "seal", "walrus", "dolphin"].map((id) => ({
+      ...creature,
+      id,
+      name: id
+    }));
+    await initializeProject(projectDir, {
+      title: "Ocean Friends",
+      theme: "ocean creatures",
+      creatureCount: creatures.length
+    });
+    await updateCreatureSelection(projectDir, creatures);
+    const approved = await approveCreatureSelection(projectDir);
+
+    const firstRetry = await updateCreatureSelection(projectDir, creatures.map((item) => ({ ...item })));
+    const secondRetry = await updateCreatureSelection(projectDir, creatures.map((item) => ({ ...item })));
+
+    expect(firstRetry).toEqual(approved);
+    expect(secondRetry).toEqual(approved);
+    expect(secondRetry).toMatchObject({
+      revision: 3,
+      sourceRevision: 2,
+      stage: "selection_approved",
+      selection: { approved: true, regenerationsUsed: 0 }
+    });
+    expect(secondRetry.selection.history).toHaveLength(1);
+    expect(await loadProject(projectDir)).toEqual(approved);
+  });
+
   it("increments every persisted Canva mutation but not handoff reads", async () => {
     await initializeProject(projectDir, {
       title: "Ocean Friends",

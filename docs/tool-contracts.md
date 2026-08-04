@@ -6,7 +6,7 @@ Creates the manifest from a theme, title, age band, language, creature count, br
 
 ## `set_creature_selection`
 
-Sets the initial list or consumes one of two full-list regenerations. `excludePrevious` applies the cumulative no-reuse ledger. Alias collisions are rejected.
+Sets the initial list or consumes one of two full-list regenerations. A retry with `excludePrevious: false` is idempotent when its ordered sequence of creature IDs matches the current sequence after ID normalization; it does not change approval, history, revisions, or the regeneration allowance. Creature order is significant, so reordering IDs is a regeneration. `excludePrevious` applies the cumulative no-reuse ledger. Alias collisions are rejected.
 
 ## `approve_creature_selection`
 

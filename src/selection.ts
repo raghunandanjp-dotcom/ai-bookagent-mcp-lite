@@ -36,6 +36,12 @@ export function assertNoDuplicateCreatures(creatures: Creature[]): void {
   }
 }
 
+function hasSameOrderedCreatureIds(current: Creature[], submitted: Creature[]): boolean {
+  return current.length === submitted.length && current.every(
+    (creature, index) => slugifyCreatureName(creature.id) === slugifyCreatureName(submitted[index].id)
+  );
+}
+
 export function beginSelection(
   creatures: Creature[],
   previous?: SelectionState,
@@ -53,6 +59,8 @@ export function beginSelection(
     history: [],
     cumulativeExclusions: []
   };
+  if (state.current.length > 0 && !excludePrevious && hasSameOrderedCreatureIds(state.current, creatures)) return state;
+
   const isRegeneration = state.current.length > 0;
   if (isRegeneration && state.regenerationsUsed >= LIMITS.maxRegenerations) {
     throw new Error("The two creature-list regenerations have already been used.");
