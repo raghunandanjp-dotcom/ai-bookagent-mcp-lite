@@ -9,9 +9,9 @@ Canva is an optional second phase. The project does not install connectors, perf
 3. Optionally create PPTX and/or PDF.
 4. Ask the host to report Canva as `ready`, `unavailable`, or `authorization_required`.
 5. If unavailable or unauthorized, show the corresponding setup instructions and pause.
-6. Present host-provided design choices and record the user's selection.
-7. Ask for explicit consent for that design and source revision.
-8. Revalidate the complete approved illustration set and create a neutral handoff payload.
+6. Ask for explicit consent for the approved source revision, design revision, and illustration digest.
+7. Revalidate the complete approved illustration set and create a faithful neutral handoff payload.
+8. Optionally record a Canva template only when the user explicitly requests redesign.
 9. Let the host invoke the connector exposed by its environment.
 10. Record either a structured connector failure or the returned design ID and genuine Canva edit URL.
 
@@ -22,30 +22,29 @@ No content leaves the local project during readiness checks.
 ## State and resume model
 
 ```text
-not_checked -> setup_required | design_selection_required
-design_selection_required -> ready_for_consent
+not_checked -> setup_required | ready_for_consent
 ready_for_consent -> declined | consented
 consented -> failed | complete
 failed -> failed | complete
 ```
 
-A declined handoff remains a completed local delivery and can be restarted with a new readiness check. A retryable failure retains consent for the selected design and source revision, so the neutral payload can be prepared again. A readiness recheck, design change, content change, or DOCX rework invalidates prior consent.
+A declined handoff remains a completed local delivery and can be restarted with a new readiness check. A retryable failure retains consent only while the canonical source/design/illustration bindings remain unchanged. A readiness recheck, design change, content change, or rework invalidates prior consent.
 
 ## Neutral connector boundary
 
-`prepare_canva_handoff` returns versioned data with `operation: "create_editable_design"`, project/revision correlation, the selected design, the reviewed pages, and the same approved asset records used by DOCX/PPTX/PDF. Every record carries a project-relative path, MIME type, dimensions, byte count, digest, reviewed alternative text, source, provenance, and license. Pages reference stable `illustrationAssetId` values; they never contain raw prompts or illustration briefs. The adapter must upload those exact bytes and must not silently regenerate, replace, or substitute artwork. The local core never calls Canva itself. A host-specific adapter maps this payload to the currently exposed connector tool and returns one of:
+`prepare_canva_handoff` returns versioned data with `operation: "create_editable_design"`, `mode: "faithful_canonical_reproduction"`, project/revision correlation, canonical design bindings, the reviewed pages, and the same approved assets used by DOCX/PPTX/PDF. Every record carries a project-relative path, MIME type, dimensions, byte count, digest, alternative text, source, provenance, and license. Pages reference stable `illustrationAssetId` values. The adapter must upload those exact bytes and must not silently regenerate, replace, or substitute artwork. A host-specific adapter returns one of:
 
 ```json
-{ "outcome": "success", "designId": "DAG...", "editUrl": "https://www.canva.com/design/DAG.../edit" }
+{ "outcome": "success", "designId": "DAG...", "editUrl": "https://www.canva.com/design/DAG.../edit", "sourceRevision": 8, "designRevision": 2, "illustrationSetDigest": "<64 hex>", "pageCount": 17 }
 ```
 
 ```json
 { "outcome": "failed", "code": "timeout", "message": "Connector timed out", "retryable": true }
 ```
 
-Success URLs must use HTTPS on a Canva-owned hostname, contain no credentials, use a Canva `/design/{id}` edit path, and contain the same design ID as the result. This is structural validation; actual existence and account access can only be established by the authorized connector or by opening the URL.
+Success URLs must use HTTPS on a Canva-owned hostname, contain no credentials, use a Canva `/design/{id}` edit path, and contain the same design ID as the result. The returned source/design/digest/page metadata must exactly match the approved `BookDesign`. URL existence and account access can only be established by the authorized connector or by opening it.
 
-Changing canonical content or reworking DOCX invalidates the design selection and consent. Canva is never treated as the source of truth for book text. Connector limitations may prevent listing or updating designs; the host must disclose those limitations and provide the design identifier and title selected by the user.
+Changing canonical content, illustrations, or design invalidates consent. Canva is never the source of truth for book text. A template/design identifier is required only when the user explicitly opts into the redesign mode.
 
 ## Kannada transition
 

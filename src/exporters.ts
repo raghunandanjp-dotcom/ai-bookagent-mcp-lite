@@ -21,6 +21,7 @@ import { DOCX_TYPOGRAPHY_BY_AGE, PPTX_AGE_PROFILES, type BookContent, type BookR
 import { fileDigest, safeOutputName, type ExportFailure, type ExportRecord } from "./project.ts";
 import { normalizePoemText } from "./poems.ts";
 import type { ApprovedIllustrationSet, ResolvedIllustrationAsset } from "./illustrations.ts";
+import { bookDesignSchema, type BookDesign } from "./design.ts";
 
 const require = createRequire(import.meta.url);
 const PptxGenJS = require("pptxgenjs") as typeof import("pptxgenjs").default;
@@ -63,7 +64,7 @@ function isLockedOutputError(error: unknown): boolean {
 }
 
 function documentFont(language: BookContent["language"]): string {
-  return language === "kn" ? "Noto Sans Kannada" : "Arial";
+  return language === "kn" ? "Noto Sans Kannada" : "Noto Sans";
 }
 
 function documentLanguage(language: BookContent["language"]): string {
@@ -305,7 +306,6 @@ export async function exportPptx(
   const coverSize = fittedSize(illustrations.cover, 8.9 * 96, 4.75 * 96);
   cover.addImage({ path: illustrations.cover.absolutePath, x: 6.65 - coverSize.width / 192, y: 1.35, w: coverSize.width / 96, h: coverSize.height / 96, altText: illustrations.cover.altText });
   cover.addText(`${content.creatures.length} wonderful creatures`, { x: 1.5, y: 6.15, w: 10.3, h: 0.4, fontFace: font, fontSize: 20, lang: languageTag, align: "center", color: COLORS.teal, margin: 0.02 });
-  if (content.closingNote) cover.addText(content.closingNote, { x: 1.2, y: 6.68, w: 10.9, h: 0.38, fontFace: font, fontSize: 16, lang: languageTag, align: "center", color: "5C6770", margin: 0.02 });
 
   let slideNumber = 1;
   for (const creature of content.creatures) {
@@ -322,6 +322,14 @@ export async function exportPptx(
       slide.addImage({ path: asset.absolutePath, x: 10.5 - imageSize.width / 192, y: 1.65 + (4.75 - imageSize.height / 96) / 2, w: imageSize.width / 96, h: imageSize.height / 96, altText: asset.altText });
       slide.addText(String(slideNumber), { x: 12.25, y: 7.02, w: 0.35, h: 0.2, fontFace: font, fontSize: 10, lang: languageTag, color: "68737D", align: "right", margin: 0 });
     }
+  }
+  if (content.closingNote) {
+    const closing = pptx.addSlide();
+    slideNumber += 1;
+    closing.background = { color: COLORS.cream };
+    closing.addText("Keep Exploring", { x: 1, y: 1.7, w: 11.3, h: 0.8, fontFace: font, fontSize: 42, lang: languageTag, bold: true, align: "center", color: COLORS.navy, margin: 0.05 });
+    closing.addText(content.closingNote, { x: 1.5, y: 3, w: 10.3, h: 1.8, fontFace: font, fontSize: 26, lang: languageTag, align: "center", valign: "middle", color: COLORS.ink, margin: 0.1 });
+    closing.addText(String(slideNumber), { x: 12.25, y: 7.02, w: 0.35, h: 0.2, fontFace: font, fontSize: 10, lang: languageTag, color: "68737D", align: "right", margin: 0 });
   }
   await pptx.writeFile({ fileName: outputPath });
   const digest = await fileDigest(outputPath);
@@ -372,7 +380,7 @@ export async function exportPdf(content: BookContent, exportDir: string, illustr
     stream.on("error", reject);
     pdf.on("error", reject);
     pdf.pipe(stream);
-    const totalPages = 1 + content.creatures.length * 3;
+    const totalPages = 1 + content.creatures.length * 3 + (content.closingNote ? 1 : 0);
     const addPage = (pageNumber: number, creatureName?: string, section?: string) => {
       pdf.addPage();
       if (creatureName && section) {
@@ -409,6 +417,12 @@ export async function exportPdf(content: BookContent, exportDir: string, illustr
         taggedPdfImage(pdf, asset, PDF.margin, pdf.page.height - PDF.margin - PDF.footerHeight - 280, { fit: [bodyWidth, 260], align: "center", valign: "center" });
       }
     }
+    if (content.closingNote) {
+      pageNumber += 1;
+      addPage(pageNumber);
+      pdf.font("BookBold").fillColor(`#${COLORS.navy}`).fontSize(30).text("Keep Exploring", PDF.margin, 220, { width: pdf.page.width - 2 * PDF.margin, align: "center" });
+      pdf.font("BookRegular").fillColor(`#${COLORS.ink}`).fontSize(18).text(content.closingNote, PDF.margin, 310, { width: pdf.page.width - 2 * PDF.margin, align: "center", lineGap: 8 });
+    }
     pdf.end();
     });
     const details = await stat(temporaryPath);
@@ -427,8 +441,16 @@ export async function exportSelectedFormats(
   exportDir: string,
   formats: Array<"docx" | "pptx" | "pdf">,
   illustrations: ApprovedIllustrationSet,
-  context: Pick<BookRequest, "ageBand" | "language"> & { ensureDocx?: boolean } = { ageBand: content.effectiveAgeBand, language: content.language }
+  context: Pick<BookRequest, "ageBand" | "language"> & { ensureDocx?: boolean; design?: BookDesign } = { ageBand: content.effectiveAgeBand, language: content.language }
 ): Promise<{ records: ExportRecord[]; failures: ExportFailure[] }> {
+  if (context.design) {
+    const design = bookDesignSchema.parse(context.design);
+    if (design.status !== "approved") throw new Error("Document exports require an approved canonical BookDesign.");
+    const expectedPageCount = 1 + content.creatures.length * 3 + (content.closingNote ? 1 : 0);
+    if (design.pages.length !== expectedPageCount || design.language !== content.language) {
+      throw new Error("Canonical BookDesign no longer matches the validated book content.");
+    }
+  }
   const unique = Array.from(new Set(context.ensureDocx === false ? formats : ["docx" as const, ...formats]));
   const records: ExportRecord[] = [];
   const failures: ExportFailure[] = [];

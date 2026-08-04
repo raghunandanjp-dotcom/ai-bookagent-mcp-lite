@@ -38,6 +38,7 @@
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.17.0",
+    "@resvg/resvg-js": "^2.6.2",
     "docx": "^9.5.1",
     "jszip": "^3.10.1",
     "pdfkit": "^0.17.1",

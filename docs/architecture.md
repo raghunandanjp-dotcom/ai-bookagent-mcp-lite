@@ -4,10 +4,10 @@
 
 1. Offline-first deterministic core.
 2. Host-assisted model generation.
-3. DOCX-first delivery.
-4. DOCX-first review and explicit acceptance.
+3. Canonical HTML-first design review.
+4. DOCX-first delivery and explicit acceptance.
 5. Optional PPTX/PDF only after current DOCX acceptance.
-6. Design selection and explicit consent before Canva.
+6. Faithful Canva reproduction with explicit consent; template redesign is optional.
 7. Portable, resumable, versioned project packages.
 
 ## Components
@@ -19,6 +19,8 @@
 - `validation.ts`: schema, coverage, page, word, language, and review checks.
 - `project.ts`: atomic manifest persistence, provenance, paths, and checksums.
 - `illustrations.ts`: host-assisted prompt packaging, PNG/JPEG inspection, project-local import, content digests, and final approved-set resolution.
+- `svg-illustrations.ts`: constrained SVG validation, exact-set batching, local `resvg` rasterization, and code-native provenance.
+- `design.ts`: canonical page plan, design/source/illustration revision binding, and local HTML preview rendering.
 - `exporters.ts`: DOCX-first export orchestration plus deterministic illustrated DOCX, editable age-profiled illustrated PPTX, and fixed-page illustrated PDF creation. Optional failures are isolated from successful artifacts.
 - `canva.ts`: readiness, consent, handoff, and URL validation.
 - `workflow.ts`: stateful orchestration.
@@ -35,9 +37,9 @@ OAuth credentials are never handled or stored by this project.
 
 ## Project state
 
-The manifest stores both a bookkeeping `revision` and canonical `sourceRevision`, plus the project request, selection history, content, illustration records, output checksums, DOCX acceptance, rework count, and Canva state. Every illustration record includes its required slot, approval state, project-relative path, MIME type, dimensions, byte count, SHA-256 digest, alternative text, source, provenance, and license. Exports retain the source revision that produced them, so older artifacts can be reported as stale instead of silently treated as current.
+The manifest stores bookkeeping `revision`, canonical `sourceRevision`, versioned `BookDesign`, its `designRevision`, and an illustration-set digest, plus request, selection history, content, illustration records, output checksums, DOCX acceptance, rework count, and Canva state. Exports retain all three canonical bindings, so older artifacts are stale rather than silently current.
 
-The DOCX primary output is reviewed before secondary work begins. Up to two reworks may replace the canonical content and regenerate DOCX. The first warns that one rework remains; the second warns that none remain. Every rework increments `sourceRevision`, clears primary acceptance, and invalidates Canva state. PPTX and PDF are independent optional outputs. Canva is available only for an accepted DOCX at the current source revision and requires an explicit design selection before consent.
+The HTML preview is reviewed before any document export. One approval covers the complete page plan and exact illustration set. The DOCX primary output is then reviewed before secondary work begins. Up to two reworks may replace content; each increments `sourceRevision`, clears acceptance, refreshes the HTML design preview, and requires new design approval before DOCX regeneration. Canva is available only for an accepted DOCX bound to the approved design. Template selection is optional and explicitly requests redesign.
 
 Canva readiness distinguishes missing setup from missing authorization. Declines and connector failures are persisted. Retryable failures retain consent only for the unchanged selected design and source revision; rechecking readiness or changing canonical inputs returns the workflow to a fresh consent boundary.
 

@@ -32,13 +32,25 @@ Creates a project-local prompt package with a single shared art direction, one c
 
 Imports either host-generated or user-supplied PNG/JPEG artwork into `assets/illustrations`. It identifies the required cover or creature slot and persists signature-derived MIME type and dimensions, byte count, SHA-256 digest, alternative text, source, provenance, and licensing data. Files larger than 15 MiB, unsupported/corrupt files, dimensions above 20,000 pixels, or images below the print-fit minimum of 600 pixels on the long edge and 350 pixels on the short edge are rejected. Import does not imply approval.
 
+## `import_code_native_illustration_set`
+
+Accepts exactly one cover and one creature SVG for every current creature in a single batch. Only a constrained shape/path subset is allowed. Scripts, event handlers, links, remote or embedded resources, text, styling blocks, and unsupported elements or attributes are rejected. Sanitized SVG sources are retained and rasterized locally with `resvg`; checksum-bound PNG records use `source: code_native`. This is the preferred self-contained path and does not depend on a host image connector or user-managed source paths.
+
+## `create_book_design_preview`
+
+Builds the versioned canonical `BookDesign`, binds it to the current source revision and illustration-set digest, copies local fonts, and writes `previews/book-design.html` plus `design/book-design.json`. The complete asset set is integrity-checked, but may remain pending because the preview is the approval artifact.
+
+## `approve_book_design`
+
+Records one explicit review of the HTML book design and batch-approves every exact illustration displayed in it. Stale source revisions, changed illustration digests, missing files, or corrupt files block approval. This gate unlocks all exporters.
+
 ## `review_illustration_asset`
 
 Approves or rejects one imported asset and records the reviewer, time, and optional note. Re-importing a slot replaces its manifest record and returns it to pending review. Exactly one approved cover and one approved asset per current creature are required for export.
 
 ## `create_document_exports`
 
-Creates DOCX by default. Before writing anything, it revalidates the complete approved illustration set from disk, including file signature, MIME type, dimensions, byte count, digest, required slots, unexpected slots, approval state, and the 80 MiB set limit. The primary DOCX is mandatory and must be accepted before PPTX or PDF can be created independently for the same source revision. All file locations remain inside the book-project directory. The underlying batch exporter still guarantees DOCX-first generation by default; the workflow disables that implicit regeneration only after the checksum-bound primary DOCX has already been accepted.
+Creates DOCX by default from the approved current `BookDesign`. Before writing anything, it verifies source revision, design revision, illustration-set digest, page plan, and the complete approved illustration set on disk. The primary DOCX is mandatory and must be accepted before PPTX or PDF can be created independently for the same bound design. Export records retain all three bindings so stale artifacts cannot be treated as current.
 
 ## `accept_primary_output`
 
@@ -46,9 +58,7 @@ Accepts the reviewed current DOCX and unlocks PPTX, PDF, and Canva. Acceptance b
 
 ## `rework_primary_output`
 
-Accepts validated replacement content and regenerates DOCX. A project permits at most two reworks. It returns the remaining count and the required warning.
-
-If the reviewed DOCX is open or otherwise locked during replacement, rework fails with the stable `docx_output_locked` export code and instructs the caller to close the DOCX before retrying. The existing DOCX and project state remain unchanged, the temporary package is removed, and the failed attempt does not consume a rework.
+Accepts validated replacement content, advances the source revision, makes old outputs stale, and creates a refreshed HTML design preview. A project permits at most two reworks. The refreshed design must be reviewed before DOCX is regenerated; rework never silently publishes against the previously approved layout.
 
 A blocking content-validation error prevents document generation.
 
@@ -66,7 +76,7 @@ DOCX generation uses only local libraries. LibreOffice and Poppler are optional 
 
 Optional-format failures preserve successful artifacts and produce a `partially_complete` project with structured `exportFailures`; mandatory DOCX failure remains blocking. PDF follows the deterministic local specification in [MVP PDF generation](pdf-generation.md).
 
-PPTX uses a deterministic illustrated cover plus poem, fun-fact, and activity slide per creature. It preserves editable book text and stores image alternative text in DrawingML. Kannada PPTX records a warning because `Noto Sans Kannada` is referenced but not embedded.
+PPTX uses the canonical cover, poem, fun-fact, activity, and optional closing-page sequence. It preserves editable book text and stores image alternative text in DrawingML. Kannada PPTX records a warning because `Noto Sans Kannada` is referenced but not embedded.
 
 ## `check_canva_readiness`
 
@@ -74,19 +84,19 @@ Records host-reported `ready`, `unavailable`, or `authorization_required` state 
 
 ## `confirm_canva_handoff`
 
-Persists explicit approval or decline after a design is selected. No handoff is available without approval for the current source revision. Decline is a terminal local-first delivery outcome and may later be restarted through readiness.
+Persists explicit approval or decline for the current approved source revision, design revision, and illustration-set digest. A Canva template selection is not required for faithful reproduction.
 
 ## `select_canva_design`
 
-Records the user's design ID, title, optional template URL, and current source revision. Changing the selection requires fresh consent.
+Optional. Records a Canva design/template choice and changes the handoff mode to `explicit_redesign_requested`. The normal mode is faithful canonical reproduction without template selection.
 
 ## `prepare_canva_handoff`
 
-Returns the reviewed page plan in a versioned, adapter-neutral `create_editable_design` envelope with project/revision correlation. It does not call Canva itself. Kannada payloads include `kn-IN`, localized section titles, editable-font and glyph-coverage requirements, and explicit human language/rendered review flags. Adapters must fail explicitly if they cannot preserve editable Kannada text. Retryable connector failures may resume with the same consent while the selected design and source revision remain unchanged.
+Returns the approved `BookDesign` page plan in a versioned, adapter-neutral `create_editable_design` envelope with project/revision correlation, theme, format profile, exact approved assets, source revision, design revision, and illustration digest. Default mode is `faithful_canonical_reproduction`. It does not call Canva itself. Adapters must report unavoidable exceptions and fail explicitly if editable Kannada cannot be preserved.
 
 ## `record_canva_result`
 
-Accepts a discriminated `success` or `failed` result. Failures persist a code, safe message, retryability, and timestamp. Success requires an HTTPS Canva design URL whose path ID exactly matches `designId`; lookalike domains, credentials, arbitrary paths, and mismatches are rejected.
+Accepts a discriminated `success` or `failed` result. Failures persist a code, safe message, retryability, and timestamp. Success requires a genuine matching HTTPS Canva design URL and parity metadata matching the approved source revision, design revision, illustration-set digest, and page count.
 
 ## `get_delivery_summary`
 

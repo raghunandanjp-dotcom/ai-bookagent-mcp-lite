@@ -10,11 +10,11 @@ Each approved creature receives:
 2. A factual fun section
 3. A safe activity
 
-The primary artifact is always DOCX. Before it can be generated, the project must contain one reviewed cover illustration and one reviewed illustration per selected creature. A creature's single approved asset is reused on its poem, fun-fact, and activity pages in DOCX, PPTX, PDF, and the Canva handoff. After reviewing DOCX, the user may rework it (at most twice), accept it and finish, create optional PPTX/PDF secondary outputs, or continue to Canva. Canva is the final optional output.
+The primary artifact is always DOCX, but the approved HTML-first `BookDesign` is the design source of truth. Claude can author one complete constrained-SVG illustration set; the MCP sanitizes and rasterizes it locally, so the normal workflow does not require an image connector or user-managed image paths. Existing PNG/JPEG imports remain supported. One review of the HTML book design approves its page plan and complete illustration set for reuse in DOCX, PPTX, PDF, and Canva. See [Canonical BookDesign decision](docs/canonical-book-design.md).
 
 The DOCX page sequence is deterministic: one cover, then one poem page, one fun-fact page, and one activity page for every approved creature. A non-empty closing note adds one final page. The projected page count is therefore `1 + (3 × creatures) + optional closing page`.
 
-PPTX output uses editable native text and shapes with a deterministic cover plus poem, fun-fact, and activity slide for every creature (`1 + 3 × creatures`). Age-band typography, blocking overflow limits, structural checks, accessibility behavior, and visual QA are specified in [MVP PowerPoint generation](docs/pptx-generation.md).
+PPTX output uses editable native text and shapes with the canonical cover, poem, fun-fact, activity, and optional closing-page sequence. Age-band typography, blocking overflow limits, structural checks, accessibility behavior, and visual QA are specified in [MVP PowerPoint generation](docs/pptx-generation.md).
 
 ### Boundaries
 
@@ -43,16 +43,15 @@ brief
   -> optional poem iteration 1 (same age)
   -> optional poem iteration 2 (next age; 12-14 remains unchanged)
   -> validate structured content
-  -> prepare host-assisted illustration prompts or import user artwork
-  -> import one cover and one illustration per creature
-  -> review and approve every illustration
+  -> author and batch-import constrained SVG illustrations, or import existing PNG/JPEG artwork
+  -> create canonical BookDesign and HTML-first preview
+  -> review and approve the whole book design once
   -> primary DOCX
   -> review: rework (maximum two) or accept
   -> optional PPTX and/or PDF
   -> optional Canva readiness check
-  -> select Canva design
   -> user consent
-  -> connector handoff
+  -> faithful Canva handoff (optional template selection means explicit redesign)
   -> record genuine Canva edit URL
 ```
 
@@ -113,7 +112,7 @@ also requires `BOOK_AGENT_KANNADA_FONT_PATH` in the user's uncommitted `.env`
 file so the font can be embedded. The exporter fails clearly instead of
 producing a PDF with missing glyphs.
 
-DOCX generation itself remains local and requires no Office installation, cloud conversion, Canva access, or paid API. Illustration generation is host-assisted: the connector creates a consistent prompt package but does not call or require a paid image API. Hosts may generate images with an available image tool or import user-supplied PNG/JPEG artwork. Optional visual QA uses local LibreOffice and Poppler. Kannada DOCX release QA requires `Noto Sans Kannada` to be installed and remains subject to human language and rendered-glyph review under issue #1.
+DOCX generation itself remains local and requires no Office installation, cloud conversion, Canva access, or paid API. The preferred illustration path is Claude-authored constrained SVG rasterized locally with `resvg`; imported PNG/JPEG artwork remains optional. Optional visual QA uses local LibreOffice and Poppler. Kannada DOCX release QA requires `Noto Sans Kannada` to be installed and remains subject to human language and rendered-glyph review under issue #1.
 
 PPTX does not embed `Noto Sans Kannada`; Kannada decks therefore include an export warning and require the font on every viewing or editing system.
 
@@ -129,27 +128,27 @@ ai-bookagent prompt ./my-book
 # A host may call the reiterate_authoring_prompt MCP tool up to twice.
 ai-bookagent content ./my-book ./claude-content.json
 ai-bookagent illustration-prompts ./my-book
-ai-bookagent import-illustration ./my-book ./cover-asset.json
-ai-bookagent review-illustration ./my-book ./cover-review.json
+ai-bookagent import-svg-set ./my-book ./illustration-set.json
+ai-bookagent design-preview ./my-book
+ai-bookagent approve-design ./my-book ./design-review.json
 ai-bookagent export ./my-book docx,pptx,pdf
 ai-bookagent accept-docx ./my-book
 ai-bookagent rework ./my-book ./reworked-content.json
 ai-bookagent summary ./my-book
 ```
 
-Generated files, approved illustrations, provenance, licensing metadata, and resumable state stay inside the selected book-project directory. File targets are constrained to that directory. PNG and JPEG assets are signature-validated, checksum-bound, dimension-checked, and revalidated immediately before export.
+Generated files, SVG sources, rasterized or imported illustrations, provenance, licensing metadata, the canonical design manifest, HTML preview, and resumable state stay inside the selected book-project directory. File targets are constrained to that directory. Raster assets are signature-validated, checksum-bound, dimension-checked, and revalidated immediately before export.
 
 ## Canva checkpoint
 
-The current DOCX must be explicitly accepted before any secondary output. A rework creates a new source revision, makes prior outputs stale, regenerates DOCX, and clears acceptance. After acceptance, PPTX and PDF may be created independently. Canva then:
+The current DOCX must be explicitly accepted before any secondary output. A rework creates a new source revision, makes prior outputs stale, refreshes the HTML design preview, and requires design approval before DOCX is regenerated. After acceptance, PPTX and PDF may be created independently. Canva then:
 
 1. Record whether Canva is ready, unavailable, or requires authorization.
 2. Return distinct installation or authorization guidance without sending book content.
-3. Record the user's chosen Canva design.
-4. Pause for consent scoped to that design and source revision.
-5. Produce a connector-ready handoff.
-6. Persist an explicit decline or structured connector failure for later resume.
-7. Validate a successful HTTPS Canva design URL and require its path ID to match the returned design ID.
+3. Pause for consent scoped to the approved source and design revisions.
+4. Produce a faithful connector-ready handoff. Template selection is optional and explicitly requests redesign.
+5. Persist an explicit decline or structured connector failure for later resume.
+6. Validate the Canva URL and parity metadata returned for the canonical design.
 
 The project never invents an edit link. Connector-specific tool names and arguments stay in the host adapter; the persisted handoff and result contracts remain neutral.
 

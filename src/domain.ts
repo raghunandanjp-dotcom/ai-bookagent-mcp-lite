@@ -139,7 +139,7 @@ export const illustrationAssetSchema = z.object({
   bytes: z.number().int().positive().max(LIMITS.maxIllustrationBytes),
   sha256: z.string().regex(/^[a-f0-9]{64}$/u),
   altText: z.string().trim().min(1).max(LIMITS.maxAltTextCharacters),
-  source: z.enum(["host_generated", "user_supplied"]),
+  source: z.enum(["host_generated", "user_supplied", "code_native"]),
   provenance: z.object({
     importedAt: z.string().datetime(),
     createdBy: z.string().trim().min(1).max(200).optional(),

@@ -9,11 +9,11 @@ connector checks remain distinguishable.
 | Field | Value |
 | --- | --- |
 | Cycle ID | `TC-2026-08-04-01` |
-| Baseline commit | `6b518ade73600204e1e171a6c3fb3fd7d5ada6f5` plus the test-only working-tree additions recorded below |
-| Branch | `main` |
+| Baseline commit | `c19d445ff6bc532bf73cecb9f3359f0394a30d59` plus ENH-0009 changes on the branch below |
+| Branch | `codex/enh-0009-canonical-book-design` |
 | Started | 2026-08-04 (Asia/Calcutta) |
 | Runtime | Node.js 24.14.1 on Windows |
-| Overall status | In progress: 87 automated tests and core smoke pass; DOCX/PPTX visual, English/Kannada human QA, and Canva end-to-end remain |
+| Overall status | In progress: 92 automated tests and core smoke pass; ENH-0009 HTML/DOCX/PPTX visual QA, English/Kannada human QA, and Canva end-to-end remain |
 
 ## How to maintain this document
 
@@ -40,7 +40,8 @@ for non-portable user-specific paths.
 | PPTX validation | `tests/pptx-validation.test.ts` | 6 | Age-band density boundaries, line/section overflow, Kannada font warning |
 | Poem rules | `tests/poems.test.ts` | 7 | Age defaults, line normalization, repeated-stanza detection |
 | Language | `tests/language.test.ts` | 4 | Kannada normalization, mixed Latin detection, digits/marks, English briefs for Kannada output |
-| Illustration workflow | `tests/illustrations.test.ts` | 3 | Prompt slots, import metadata, approval gate, unsupported/corrupt assets, missing/unexpected slots, digest mismatch |
+| Illustration workflow | `tests/illustrations.test.ts` | 4 | Prompt slots, import metadata, approval gate, unsupported/corrupt assets, missing/unexpected slots, digest and preview-tamper detection |
+| Canonical design | `tests/design.test.ts` | 4 | SVG allowlist security, exact batch/local rasterization, canonical page plan, accessible offline HTML, public SVG-to-DOCX workflow |
 | Project state | `tests/project.test.ts` | 5 | Mandatory DOCX, path containment, absolute MCP project directories, legacy manifests, malformed Canva state |
 | Creature selection | `tests/selection.test.ts` | 5 | Batch size, alias reuse, regeneration limit, normalized idempotent retry, order-sensitive regeneration |
 | Core smoke | `scripts/smoke-core.mts` | 1 script | Representative end-to-end domain flow using the checked-in ocean example |
@@ -48,7 +49,7 @@ for non-portable user-specific paths.
 | PDF render QA | `scripts/render-pdf-qa.mjs` | 4 sizes | Generates 1/5/11/20-creature PDFs and rasterizes them when Poppler is present |
 | PPTX render QA | `scripts/render-pptx-qa.mjs` | 4 sizes | Generates 1/5/11/20-creature decks and rasterizes them when LibreOffice and Poppler are present |
 
-Vitest currently contains **87 automated tests across 12 suites**. The fixture
+Vitest currently contains **92 automated tests across 13 suites**. The fixture
 file `tests/fixtures/pptx-content.ts` supplies test data and is not a test suite.
 
 ## Latest-change validation matrix
@@ -67,6 +68,12 @@ file `tests/fixtures/pptx-content.ts` supplies test data and is not a test suite
 | `ILL-004` | DOCX/PPTX/PDF embed approved artwork | Structural integration | Correct media relationships, accessibility metadata, digest reuse, and no production labels | Passed in R17; PDF visual QA passed in R13 | [#26](https://github.com/raghunandanjp-dotcom/ai-bookagent-mcp-lite/issues/26), completed | [PR #30](https://github.com/raghunandanjp-dotcom/ai-bookagent-mcp-lite/pull/30) |
 | `ILL-005` | Canva handoff references approved artwork | Contract | Exact checksum-bound assets and page references; no internal production copy | Passed in R17 | [#26](https://github.com/raghunandanjp-dotcom/ai-bookagent-mcp-lite/issues/26), completed | [PR #30](https://github.com/raghunandanjp-dotcom/ai-bookagent-mcp-lite/pull/30) |
 | `ILL-006` | 1/5/11/20-creature output boundaries | Structural and visual | Deterministic DOCX/PPTX/PDF counts and proportional, unobstructed artwork | Automated and PDF visual passed; DOCX/PPTX visual blocked by `TST-002` | [#26](https://github.com/raghunandanjp-dotcom/ai-bookagent-mcp-lite/issues/26), completed | [PR #30](https://github.com/raghunandanjp-dotcom/ai-bookagent-mcp-lite/pull/30) |
+| `DES-001` | Claude-authored SVG contains active, linked, embedded, text, or unsupported content | Security/unit | Strict rejection before any raster or manifest is accepted | Passed in R22 | [#32](https://github.com/raghunandanjp-dotcom/ai-bookagent-mcp-lite/issues/32), in progress | [PR #33](https://github.com/raghunandanjp-dotcom/ai-bookagent-mcp-lite/pull/33): constrained allowlist and local `resvg` rasterization |
+| `DES-002` | Complete code-native illustration set is submitted | Integration | Exact cover/creature slots, retained SVG provenance, checksum-bound local PNG, no external source path | Passed in R22 | [#32](https://github.com/raghunandanjp-dotcom/ai-bookagent-mcp-lite/issues/32), in progress | [PR #33](https://github.com/raghunandanjp-dotcom/ai-bookagent-mcp-lite/pull/33): batch code-native illustration workflow |
+| `DES-003` | Canonical design is rendered for review | Contract/unit | One page plan including closing page; offline fonts/assets and accessible alt text | Passed in R22 | [#32](https://github.com/raghunandanjp-dotcom/ai-bookagent-mcp-lite/issues/32), in progress | [PR #33](https://github.com/raghunandanjp-dotcom/ai-bookagent-mcp-lite/pull/33): versioned `BookDesign` and HTML preview |
+| `DES-004` | Content is reworked after DOCX review | Workflow | Old output becomes stale; new HTML design approval is required before DOCX regeneration | Passed in R22 | [#32](https://github.com/raghunandanjp-dotcom/ai-bookagent-mcp-lite/issues/32), in progress | [PR #33](https://github.com/raghunandanjp-dotcom/ai-bookagent-mcp-lite/pull/33): source/design revision gate |
+| `DES-005` | PPTX/PDF contain a closing note | Structural integration | Closing note appears as the same final canonical page used by HTML/DOCX | Passed in R22 | [#32](https://github.com/raghunandanjp-dotcom/ai-bookagent-mcp-lite/issues/32), in progress | [PR #33](https://github.com/raghunandanjp-dotcom/ai-bookagent-mcp-lite/pull/33): cross-format page-plan parity |
+| `CAN-009` | Faithful Canva handoff without template selection | Contract/workflow | Consent binds source/design/digest; payload uses canonical pages; success echoes parity metadata | Passed in R22; real connector pending | [#32](https://github.com/raghunandanjp-dotcom/ai-bookagent-mcp-lite/issues/32), in progress | [PR #33](https://github.com/raghunandanjp-dotcom/ai-bookagent-mcp-lite/pull/33): faithful-by-default Canva contract |
 
 ## Execution log
 
@@ -91,6 +98,12 @@ file `tests/fixtures/pptx-content.ts` supplies test data and is not a test suite
 | R17 | `npm.cmd run check` | Passed | TypeScript build, entrypoints, 87/87 tests across 12/12 suites, and portability scan passed. Includes PR #28, #29, and #30 regression coverage. |
 | R18 | `npm.cmd run test:smoke` | Passed | Representative ocean-example domain flow passed after the expanded regression suite. |
 | R19 | Existing English artifact eligibility check (`.claude-tests/cld-eng-01`) | Not reusable for current gate | The saved five-creature run predates ENH-0008 (`schemaVersion: 1.0`), has no approved-illustration manifest, and retains `needs_review` reader content. Its files remain preserved as historical evidence, but a current-baseline English run is still required. |
+| R20 | First full Vitest run after introducing ENH-0009 gates | Failed (expected contract migration) | 69/87 passed; 18 assertions encoded the superseded export-before-design, mandatory Canva-template, and no-closing-page contracts. No new implementation defect was inferred from those expected failures. |
+| R21 | Targeted contract migration run | Failed (test fixture) | 44/45 passed. The remaining workflow fixture omitted the newly required Canva parity metadata; the fixture was updated without weakening validation. |
+| R22 | `npm.cmd run check` after ENH-0009 implementation and test migration | Passed | TypeScript build, entrypoints, 92/92 tests across 13/13 suites, and portability scan passed. |
+| R23 | `npm.cmd run test:smoke` and `git diff --check` | Passed | Representative core smoke passed. Diff check found no whitespace errors; Git reported only the repository's normal LF-to-CRLF checkout notices. |
+| R24 | Full gate after adding the SVG-to-DOCX public-flow test | Failed (test timing) | 90/92 passed. Two native `resvg` tests crossed Vitest's 5-second default while the full suite was running concurrently; both had passed in targeted runs and reported only timeout failures. Their explicit budgets were raised to 15 seconds, matching the existing export-test convention. |
+| R25 | `npm.cmd run check` after native-raster timing correction | Passed | TypeScript build, entrypoints, 92/92 tests across 13/13 suites, and portability scan passed. The public code-native SVG → HTML approval → bound DOCX path passed end to end. |
 
 ## Findings and actions
 
@@ -110,6 +123,7 @@ file `tests/fixtures/pptx-content.ts` supplies test data and is not a test suite
 | [#24](https://github.com/raghunandanjp-dotcom/ai-bookagent-mcp-lite/issues/24) / `BUG-0006`: identical selection retries consumed state | Resolved | `SEL-001` to `SEL-003` | [PR #28](https://github.com/raghunandanjp-dotcom/ai-bookagent-mcp-lite/pull/28) | Compare ordered normalized IDs and return the existing state for a no-op retry. |
 | [#25](https://github.com/raghunandanjp-dotcom/ai-bookagent-mcp-lite/issues/25) / `BUG-0007`: locked DOCX rework surfaced a raw filesystem failure | Resolved | `LOCK-001` to `LOCK-003` | [PR #29](https://github.com/raghunandanjp-dotcom/ai-bookagent-mcp-lite/pull/29) | Convert `EPERM`/`EACCES` to an actionable stable error without changing the file or project state. |
 | [#26](https://github.com/raghunandanjp-dotcom/ai-bookagent-mcp-lite/issues/26) / `ENH-0008`: final outputs lacked approved illustrations | Completed | `ILL-001` to `ILL-006` | [PR #30](https://github.com/raghunandanjp-dotcom/ai-bookagent-mcp-lite/pull/30) | Add reviewed, checksum-bound artwork and reuse it across DOCX, PPTX, PDF, and Canva. |
+| [#32](https://github.com/raghunandanjp-dotcom/ai-bookagent-mcp-lite/issues/32) / `ENH-0009`: external image generation/path dependency blocked the normal Claude workflow | In review | `DES-001` to `DES-005`, `CAN-009`, CLD-ENG-003 | [PR #33](https://github.com/raghunandanjp-dotcom/ai-bookagent-mcp-lite/pull/33) | Add constrained code-native SVG, canonical HTML-first `BookDesign`, one batch design approval, bound exports, and faithful Canva reproduction. Rationale is recorded in `docs/canonical-book-design.md`. |
 | `TST-002`: DOCX/PPTX reference rendering unavailable locally | Open | `ILL-006` | None | Install/use LibreOffice and run both visual QA scripts before release. |
 | `TST-003`: Kannada human language and glyph validation outstanding | Pending | Release gate | None | Obtain fluent reviewer sign-off on the final representative artifact. |
 | `TST-004`: real Canva authorization and edit-link flow outstanding | Pending | Release gate | None | Complete one consented end-to-end connector handoff and visual review. |
@@ -146,7 +160,7 @@ generate content where model behavior itself is under test.
 | Clean dependency install | Passed | Lockfile-based install completes |
 | TypeScript build | Passed | `npm run build` |
 | Entrypoints | Passed | `npm run check:entrypoints` |
-| Automated tests | Passed | 87/87 tests |
+| Automated tests | Passed | 92/92 tests |
 | Portability | Passed | `npm run check:paths` |
 | Core smoke | Passed | Representative ocean-example flow passes with a 17-page total |
 | PDF structural/render QA | Passed | 4/16/34/61 pages rendered; representative smallest and largest pages visually inspected |
