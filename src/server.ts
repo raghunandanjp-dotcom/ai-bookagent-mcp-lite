@@ -37,7 +37,7 @@ server.registerTool(
   {
     description: "Create a portable creature poetry-book project after explicitly asking the user for age band and language. Kannada is experimental and requires fluent human review and discretion. DOCX is always mandatory.",
     inputSchema: {
-      projectDir: z.string().min(1).describe("A host-selected project directory."),
+      projectDir: z.string().min(1).describe("An absolute, host-selected project directory."),
       request: interactiveBookRequestSchema
     }
   },
