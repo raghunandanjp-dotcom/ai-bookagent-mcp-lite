@@ -1,165 +1,181 @@
 # AI Book Agent MCP Lite
 
-A lightweight, host-assisted Model Context Protocol server for creating children's creature poetry books. Development requires no paid model API token: the MCP prepares structured prompts for Claude, validates the returned content, creates local documents, and optionally prepares a consent-gated Canva handoff.
+AI Book Agent MCP Lite is a local, host-assisted Model Context Protocol (MCP) server that turns an approved creature list into a reviewable children's poetry book. It asks Claude to author structured content and constrained SVG illustrations, validates the result, and creates editable DOCX, PPTX, and PDF files without a paid model API key.
 
-## MVP
+The design source of truth is a self-contained HTML preview. One explicit review binds its page plan and complete illustration set to every export. Canva is optional and always requires separate consent.
 
-Each approved creature receives:
+## What is supported
 
-1. A titled, age-structured poem
-2. A factual fun section
-3. A safe activity
+Stable for the release candidate:
 
-The primary artifact is always DOCX, but the approved HTML-first `BookDesign` is the design source of truth. Claude can author one complete constrained-SVG illustration set; the MCP sanitizes and rasterizes it locally, so the normal workflow does not require an image connector or user-managed image paths. Existing PNG/JPEG imports remain supported. One review of the HTML book design approves its page plan and complete illustration set for reuse in DOCX, PPTX, PDF, and Canva. See [Canonical BookDesign decision](docs/canonical-book-design.md).
+- English books for ages 3–14, with 1–20 creatures (5 by default)
+- Deterministic cover, poem, fun-fact, activity, and optional closing pages
+- Claude-authored constrained SVG illustrations, sanitized and rasterized locally
+- Existing PNG/JPEG artwork with provenance, license, dimensions, and checksum records
+- An HTML-first design review followed by local DOCX, PPTX, and PDF generation
+- Resumable project state, two creature-list regenerations, and two DOCX reworks
+- Optional, consent-gated, adapter-neutral Canva handoff
 
-The DOCX page sequence is deterministic: one cover, then one poem page, one fun-fact page, and one activity page for every approved creature. A non-empty closing note adds one final page. The projected page count is therefore `1 + (3 × creatures) + optional closing page`.
+Experimental or externally gated:
 
-PPTX output uses editable native text and shapes with the canonical cover, poem, fun-fact, activity, and optional closing-page sequence. Age-band typography, blocking overflow limits, structural checks, accessibility behavior, and visual QA are specified in [MVP PowerPoint generation](docs/pptx-generation.md).
+- Kannada authoring requires a fluent human language review and rendered-glyph review. Kannada PDF also requires a locally configured Kannada TTF font.
+- Canva completion requires a compatible authorized host adapter; this server does not perform OAuth or call Canva itself.
+- DOCX/PPTX reference rendering for release QA requires LibreOffice and Poppler. They are not required to create the files.
 
-### Boundaries
-
-- Default: 5 creatures
-- Maximum: 20 creatures
-- Maximum projected length: 100 pages/slides
-- More than 10 creatures: generated in batches of 5
-- Creature-list regenerations: 2 after the initial list
-- English: standard
-- Kannada: experimental and requires human review
-- Audience: ages 3-14
-- Age is the only poem-structure choice; stanza, line, rhyme, and word defaults are automatic
-- Two poem iterations: the first stays in the selected age band and the second advances one band (12–14 remains 12–14)
-- Canva: optional, resumable, and explicitly consent-gated
-
-## Workflow
-
-The initial request may be entirely in English, such as “Create a 10 sea-creature book.” Before project creation, the host asks for an age band and language. Selecting Kannada activates native Kannada generation automatically; the user is never required to type Kannada. Kannada is experimental, requires fluent human review, and should be used with discretion.
-
-```text
-brief
-  -> choose age and language
-  -> creature list
-  -> approve / manually edit / regenerate (at most twice)
-  -> host-assisted Claude prompt batches
-  -> optional poem iteration 1 (same age)
-  -> optional poem iteration 2 (next age; 12-14 remains unchanged)
-  -> validate structured content
-  -> author and batch-import constrained SVG illustrations, or import existing PNG/JPEG artwork
-  -> create canonical BookDesign and HTML-first preview
-  -> review and approve the whole book design once
-  -> primary DOCX
-  -> review: rework (maximum two) or accept
-  -> optional PPTX and/or PDF
-  -> optional Canva readiness check
-  -> user consent
-  -> faithful Canva handoff (optional template selection means explicit redesign)
-  -> record genuine Canva edit URL
-```
-
-The MCP does not install Canva, perform OAuth, or call paid model APIs. Claude/Canva setup remains under the user's control.
-
-## Poem defaults
-
-| Age | Stanzas | Lines per stanza | Rhyme |
-| --- | ---: | ---: | --- |
-| 3–5 | 2 | 2 | AA |
-| 6–8 | 2 | 3 | AAB |
-| 9–11 | 3 | 4 | AABB |
-| 12–14 | 4 | 3 | AAB |
-
-Every poem has a short title. Line and stanza breaks are preserved in every export. Immediate full-stanza repetition is rejected. English rhyme follows the declared scheme. When Kannada is selected, the English prompt is treated only as source material and all reader-facing content is authored natively in Kannada rather than transliterated or translated line by line. Experimental Kannada requires fluent human review. See [MVP poem structure](docs/poem-structure.md).
-
-DOCX typography follows the effective authoring age. Poem/body sizes are 22/20 pt for ages 3–5, 20/18 pt for 6–8, 18/16 pt for 9–11, and 16/14 pt for 12–14. The exporter never silently truncates or shrinks content below these sizes; validation blocks content that exceeds its age-specific page budget.
-
-These rules are the upstream content contract for DOCX, PPTX, PDF, and Canva work. Exporter-specific tasks may change layout and rendering, but should not redefine poem structure or the age-iteration sequence.
+Not supported: unattended factual publication, arbitrary SVG/HTML, cloud storage, built-in OAuth, or a hosted MCP endpoint. Fun facts remain review items unless a human or approved source supports them.
 
 ## Requirements
 
 - Node.js 20 or newer
-- pnpm or npm
+- npm (the committed lockfile is the reproducible install source)
+- Claude Desktop or another stdio-capable MCP host
 - Optional for visual QA: LibreOffice and Poppler
 
 ## Install
 
+### From this repository (available now)
+
 ```bash
-pnpm install
-pnpm build
-pnpm test
+git clone https://github.com/raghunandanjp-dotcom/ai-bookagent-mcp-lite.git
+cd ai-bookagent-mcp-lite
+npm ci
+npm run build
+npm run check
 ```
 
-This repository is portable. Clone it anywhere, including another drive, without editing source paths.
+The package name is reserved in `package.json`, but this README does **not** assert that an npm registry release exists. Verify the package on npm before using a registry command. After an npm release is explicitly published, the intended global install is:
 
-## Run as an MCP server
+```bash
+npm install --global ai-bookagent-mcp-lite
+```
 
-Build the project and configure the host with an absolute path at installation time:
+For local CLI development, use `node dist/cli.js ...` after building or run `npm link` if you want the `ai-bookagent` and `ai-bookagent-mcp` commands on your PATH.
+
+## Connect Claude Desktop
+
+Use Claude Desktop's **Settings → Developer → Edit Config**, then add the server to the existing `mcpServers` object. The config file is normally `%APPDATA%\Claude\claude_desktop_config.json` on Windows or `~/Library/Application Support/Claude/claude_desktop_config.json` on macOS. The [official MCP local-server guide](https://modelcontextprotocol.io/docs/develop/connect-local-servers) has the current host instructions and log locations.
+
+For a local build, use absolute paths and replace the placeholders:
 
 ```json
 {
   "mcpServers": {
     "ai-bookagent": {
       "command": "node",
-      "args": ["/path/to/ai-bookagent-mcp-lite/dist/server.js"]
+      "args": ["/absolute/path/to/ai-bookagent-mcp-lite/dist/server.js"]
     }
   }
 }
 ```
 
-The example intentionally uses a placeholder. Do not commit a machine-specific MCP configuration.
+On Windows, JSON paths may use forward slashes (`C:/absolute/path/dist/server.js`) or escaped backslashes (`C:\\absolute\\path\\dist\\server.js`). Completely quit and restart Claude Desktop after saving. A future global npm installation can launch `ai-bookagent-mcp`; on Windows, use `"command": "cmd"` with `"args": ["/c", "ai-bookagent-mcp"]` if Claude cannot resolve the npm `.cmd` shim.
 
-MCP tool calls require an absolute `projectDir` selected by the host. Relative project directories are rejected before filesystem access because an MCP process may run from a system or otherwise host-dependent working directory. The CLI continues to accept relative project directories and resolves them from the user's current directory.
+Never commit a machine-specific Claude Desktop config. MCP calls also require an absolute, host-selected `projectDir`; relative MCP project directories are rejected before filesystem access.
 
-Kannada DOCX/PPTX uses the `Noto Sans Kannada` font family. Kannada PDF export
-also requires `BOOK_AGENT_KANNADA_FONT_PATH` in the user's uncommitted `.env`
-file so the font can be embedded. The exporter fails clearly instead of
-producing a PDF with missing glyphs.
+## First book
 
-DOCX generation itself remains local and requires no Office installation, cloud conversion, Canva access, or paid API. The preferred illustration path is Claude-authored constrained SVG rasterized locally with `resvg`; imported PNG/JPEG artwork remains optional. Optional visual QA uses local LibreOffice and Poppler. Kannada DOCX release QA requires `Noto Sans Kannada` to be installed and remains subject to human language and rendered-glyph review under issue #1.
+In a new Claude Desktop chat, try:
 
-PPTX does not embed `Noto Sans Kannada`; Kannada decks therefore include an export warning and require the font on every viewing or editing system.
+> Create a five-creature ocean poetry book. Save the project in an absolute folder I choose, use English for ages 6–8, and pause at every review gate.
 
-PDF uses a fixed cover-plus-three-pages-per-creature A4 layout and embeds the bundled free Noto Sans fonts for English. Optional closing notes are not included in the MVP PDF. Overflow or optional PDF failures are reported without invalidating a successful mandatory DOCX. See [MVP PDF generation](docs/pdf-generation.md).
+The normal flow is:
 
-## CLI
+```text
+choose age and language
+  → review and approve the creature list
+  → Claude authors structured content
+  → review facts, safety, and reader-facing text
+  → Claude authors one constrained-SVG illustration set
+  → review the complete HTML book design once
+  → generate and review the DOCX
+  → accept or rework the DOCX
+  → optionally generate PPTX/PDF
+  → optionally authorize and consent to Canva handoff
+```
+
+Generated content, SVG sources, raster assets, design files, exports, checksums, and resumable state remain inside the selected project directory. Review the HTML and DOCX visually; the server's validation is not a substitute for editorial, factual, language, or accessibility judgment.
+
+## CLI quick reference
+
+The CLI is useful for fixture-driven or scripted local work. JSON inputs use the schemas documented in [Tool contracts](docs/tool-contracts.md).
 
 ```bash
 ai-bookagent init ./my-book ./request.json
 ai-bookagent select ./my-book ./creatures.json
 ai-bookagent approve ./my-book
 ai-bookagent prompt ./my-book
-# A host may call the reiterate_authoring_prompt MCP tool up to twice.
 ai-bookagent content ./my-book ./claude-content.json
 ai-bookagent illustration-prompts ./my-book
 ai-bookagent import-svg-set ./my-book ./illustration-set.json
 ai-bookagent design-preview ./my-book
 ai-bookagent approve-design ./my-book ./design-review.json
-ai-bookagent export ./my-book docx,pptx,pdf
+ai-bookagent export ./my-book docx
 ai-bookagent accept-docx ./my-book
-ai-bookagent rework ./my-book ./reworked-content.json
+ai-bookagent export ./my-book pptx,pdf
 ai-bookagent summary ./my-book
 ```
 
-Generated files, SVG sources, rasterized or imported illustrations, provenance, licensing metadata, the canonical design manifest, HTML preview, and resumable state stay inside the selected book-project directory. File targets are constrained to that directory. Raster assets are signature-validated, checksum-bound, dimension-checked, and revalidated immediately before export.
+The CLI accepts relative project directories and resolves them from the current shell. The MCP server deliberately requires absolute project directories because a desktop host may start it with an unpredictable working directory.
 
-## Canva checkpoint
+## Limits and review gates
 
-The current DOCX must be explicitly accepted before any secondary output. A rework creates a new source revision, makes prior outputs stale, refreshes the HTML design preview, and requires design approval before DOCX is regenerated. After acceptance, PPTX and PDF may be created independently. Canva then:
+- Default 5 creatures; maximum 20; maximum projected length 100 pages/slides
+- More than 10 creatures are prompted in batches of 5
+- Age is the poem-structure choice; stanza, line, rhyme, and word defaults are automatic
+- Two optional poem iterations: the first retains the selected band and the second advances one band (12–14 remains 12–14)
+- DOCX is mandatory and must be accepted before PPTX, PDF, or Canva
+- Rework makes prior artifacts stale and requires a fresh design approval
+- PDF/DOCX/PPTX preserve the canonical closing page when a non-empty closing note exists
+- PPTX text remains editable; Kannada decks reference but do not embed `Noto Sans Kannada`
+- A Canva success is recorded only when a real HTTPS edit URL and matching revision/page metadata are returned
 
-1. Record whether Canva is ready, unavailable, or requires authorization.
-2. Return distinct installation or authorization guidance without sending book content.
-3. Pause for consent scoped to the approved source and design revisions.
-4. Produce a faithful connector-ready handoff. Template selection is optional and explicitly requests redesign.
-5. Persist an explicit decline or structured connector failure for later resume.
-6. Validate the Canva URL and parity metadata returned for the canonical design.
+See [Poem structure](docs/poem-structure.md), [Canonical BookDesign](docs/canonical-book-design.md), [DOCX](docs/docx-generation.md), [PPTX](docs/pptx-generation.md), [PDF](docs/pdf-generation.md), and [Canva handoff](docs/canva-handoff.md) for the detailed contracts.
 
-The project never invents an edit link. Connector-specific tool names and arguments stay in the host adapter; the persisted handoff and result contracts remain neutral.
+## Privacy and security
 
-For Kannada, the Canva payload uses locale `kn-IN`, localized section titles, and requests editable `Noto Sans Kannada` text with complete Kannada glyph coverage. The adapter must not transliterate, replace, or rasterize Kannada text. If it cannot preserve Kannada with an editable supported font, it must report a structured failure instead of claiming completion. A returned Canva link still requires fluent language review and rendered-glyph review in Canva before publication.
+- Book projects and exports are local unless the user explicitly consents to an external handoff.
+- The server does not require a paid model API token, store Canva OAuth credentials, or upload files by itself.
+- User source material is delimited as data-only in prompts; model output, paths, filenames, SVG, image files, and connector results are treated as untrusted.
+- SVG is restricted to a non-executable shape/path allowlist. Raster assets are signature-, dimension-, checksum-, and containment-validated.
+- The process has the same local permissions as the account that launches Claude Desktop. Choose a dedicated project directory and review every requested tool call.
+- Do not commit project outputs, credentials, raw logs, local environment files, or machine-specific paths.
 
-## Security and publishing
+Report vulnerabilities privately as described in [SECURITY.md](SECURITY.md). Architectural controls are summarized in [Architecture](docs/architecture.md).
 
-- User source material is delimited as data-only in prompts.
-- Local paths are runtime configuration, not source constants.
-- `npm run check:paths` rejects common user-specific absolute paths.
-- Credentials, output packages, raw logs, and local environment files are ignored.
-- Fun facts are marked for review unless a human or approved source supports them.
+## Troubleshooting
 
-See [Architecture](docs/architecture.md), [Tool contracts](docs/tool-contracts.md), [DOCX generation](docs/docx-generation.md), and [Canva handoff](docs/canva-handoff.md).
+**The server or tools do not appear in Claude Desktop**
+
+- Run `npm run build` and confirm `dist/server.js` exists.
+- Validate the JSON and use an absolute server path.
+- Completely quit and restart Claude Desktop.
+- Inspect `%APPDATA%\Claude\logs` on Windows or `~/Library/Logs/Claude` on macOS.
+- Run `node /absolute/path/to/dist/server.js` in a terminal. A healthy stdio server waits silently for an MCP client; startup errors should appear on stderr.
+
+**`projectDir` is rejected**
+
+Use an absolute path in MCP calls, such as `C:/Books/ocean-friends` or `/absolute/project/ocean-friends`. Relative paths are CLI-only.
+
+**Export is blocked**
+
+Ask for `get_delivery_summary` and follow `nextActions`. Common gates are unresolved content warnings, an incomplete illustration set, unapproved/stale HTML design, or an unaccepted DOCX.
+
+**DOCX rework reports `docx_output_locked`**
+
+Close the reviewed file in Word, LibreOffice, preview software, and sync tools, then retry. The original reviewed DOCX and rework allowances are preserved.
+
+**Kannada PDF fails or glyphs are missing**
+
+Set `BOOK_AGENT_KANNADA_FONT_PATH` in an uncommitted `.env` file to an appropriate Kannada-capable TTF. Install `Noto Sans Kannada` for DOCX/PPTX viewers and obtain fluent human language and glyph review.
+
+**Canva is unavailable or asks for authorization**
+
+Complete setup in the host adapter, rerun the readiness check, and consent only after local DOCX acceptance. This MCP never invents a Canva link.
+
+## Release status
+
+`v0.1.0-rc.1` is a planned release candidate, not an already-published npm package or GitHub release. Current automated and external gates are tracked in [Testing cycle](docs/testing-cycle.md) and [RC checklist](docs/release-checklist-v0.1.0-rc.1.md). Changes are summarized in [CHANGELOG.md](CHANGELOG.md).
+
+## Contributing and license
+
+See [CONTRIBUTING.md](CONTRIBUTING.md). This project is available under the [MIT License](LICENSE).
