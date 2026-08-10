@@ -13,7 +13,7 @@ connector checks remain distinguishable.
 | Branch | `codex/enh-0009-canonical-book-design` |
 | Started | 2026-08-04 (Asia/Calcutta) |
 | Runtime | Node.js 24.14.1 on Windows |
-| Overall status | In progress: 92 automated tests and core smoke pass; ENH-0009 HTML/DOCX/PPTX visual QA, English/Kannada human QA, and Canva end-to-end remain |
+| Overall status | In progress: 93 automated tests and core smoke pass; ENH-0009 HTML/DOCX/PPTX visual QA, English/Kannada human QA, and Canva end-to-end remain |
 
 ## How to maintain this document
 
@@ -31,7 +31,7 @@ for non-portable user-specific paths.
 
 | Area | Suite | Tests | What it covers |
 | --- | --- | ---: | --- |
-| Canva | `tests/canva.test.ts` | 12 | Readiness states, decline, consent, retry, Kannada payload, connector result validation |
+| Canva | `tests/canva.test.ts` | 13 | Readiness states, decline, consent, retry, Kannada payload, connector result validation |
 | Workflow | `tests/workflow.test.ts` | 8 | Revisions, idempotent selection persistence, Canva mutations, rework and lock behavior, DOCX acceptance gates, age iteration, partial export failure |
 | Content validation | `tests/validation.test.ts` | 6 | Creature coverage, fact review, approved creatures, page count, overflow, Kannada fields |
 | Delivery summary | `tests/delivery-summary.test.ts` | 9 | Fact/language review status, next choices, totals, Canva decline and retry |
@@ -49,7 +49,7 @@ for non-portable user-specific paths.
 | PDF render QA | `scripts/render-pdf-qa.mjs` | 4 sizes | Generates 1/5/11/20-creature PDFs and rasterizes them when Poppler is present |
 | PPTX render QA | `scripts/render-pptx-qa.mjs` | 4 sizes | Generates 1/5/11/20-creature decks and rasterizes them when LibreOffice and Poppler are present |
 
-Vitest currently contains **92 automated tests across 13 suites**. The fixture
+Vitest currently contains **93 automated tests across 13 suites**. The fixture
 file `tests/fixtures/pptx-content.ts` supplies test data and is not a test suite.
 
 ## Latest-change validation matrix
@@ -104,6 +104,11 @@ file `tests/fixtures/pptx-content.ts` supplies test data and is not a test suite
 | R23 | `npm.cmd run test:smoke` and `git diff --check` | Passed | Representative core smoke passed. Diff check found no whitespace errors; Git reported only the repository's normal LF-to-CRLF checkout notices. |
 | R24 | Full gate after adding the SVG-to-DOCX public-flow test | Failed (test timing) | 90/92 passed. Two native `resvg` tests crossed Vitest's 5-second default while the full suite was running concurrently; both had passed in targeted runs and reported only timeout failures. Their explicit budgets were raised to 15 seconds, matching the existing export-test convention. |
 | R25 | `npm.cmd run check` after native-raster timing correction | Passed | TypeScript build, entrypoints, 92/92 tests across 13/13 suites, and portability scan passed. The public code-native SVG → HTML approval → bound DOCX path passed end to end. |
+| R26 | `npm.cmd ci --no-audit --no-fund` in the isolated P2 worktree | Passed | Installed 196 packages from the committed lockfile; no tracked dependency file changed. |
+| R27 | Targeted Kannada/Canva contract run before qualification changes | Passed | 67/67 tests across 8 suites passed. This is automated structural evidence only; no fluent reviewer, Kannada render, or Canva connector was exercised. |
+| R28 | `npm.cmd run qa:docx:render` and `npm.cmd run qa:pptx:render` | Partial | All English 1/5/11/20 fixtures generated with expected logical counts. Rendering was blocked because LibreOffice is unavailable. `BOOK_AGENT_KANNADA_FONT_PATH` is unset, so this run provides no Kannada glyph evidence. |
+| R29 | Targeted Kannada/Canva run after requiring an explicit Canva `/edit` path | Passed | 68/68 tests across 8 suites passed, including rejection of a bare `/design/{id}` URL. |
+| R30 | `npm.cmd run check` after P2 qualification changes | Passed | TypeScript build, entrypoints, 93/93 tests across 13/13 suites, and portability scan passed. External and human gates remain pending. |
 
 ## Findings and actions
 
@@ -153,6 +158,10 @@ generate content where model behavior itself is under test.
 7. **Rework and error paths:** use checked-in fixtures and automated tests rather
    than asking Claude for additional variations.
 
+The resumable evidence requirements and exact external steps for the one-creature
+Kannada and real Canva runs are defined in
+[Experimental Kannada and Canva qualification](experimental-qualification.md).
+
 ## Release-candidate tracker
 
 | Gate | Status | Evidence required |
@@ -160,7 +169,7 @@ generate content where model behavior itself is under test.
 | Clean dependency install | Passed | Lockfile-based install completes |
 | TypeScript build | Passed | `npm run build` |
 | Entrypoints | Passed | `npm run check:entrypoints` |
-| Automated tests | Passed | 92/92 tests |
+| Automated tests | Passed | 93/93 tests |
 | Portability | Passed | `npm run check:paths` |
 | Core smoke | Passed | Representative ocean-example flow passes with a 17-page total |
 | PDF structural/render QA | Passed | 4/16/34/61 pages rendered; representative smallest and largest pages visually inspected |
