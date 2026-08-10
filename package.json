@@ -7,6 +7,10 @@
     "ai-bookagent-mcp": "./dist/server.js",
     "ai-bookagent": "./dist/cli.js"
   },
+  "files": [
+    "dist/**",
+    "assets/fonts/**"
+  ],
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "dev": "tsx src/cli.ts",
@@ -18,11 +22,16 @@
     "qa:docx:render": "npm run build && node scripts/render-docx-qa.mjs",
     "qa:pdf:inspect": "vitest run tests/exporters.test.ts",
     "qa:pdf:render": "npm run build && node scripts/render-pdf-qa.mjs",
-    "test:smoke": "node --experimental-strip-types scripts/smoke-core.mts",
+    "test:smoke": "npm run build && node scripts/smoke-core.mjs",
+    "test:package": "npm run prepack && node scripts/test-packed-package.mjs",
     "test:watch": "vitest",
     "check": "npm run build && npm run check:entrypoints && npm test && npm run check:paths",
     "check:paths": "node scripts/check-portability.mjs",
-    "check:entrypoints": "node scripts/check-entrypoints.mjs"
+    "check:entrypoints": "node scripts/check-entrypoints.mjs",
+    "check:release-files": "node scripts/check-release-files.mjs",
+    "check:package": "npm run prepack && node scripts/check-package-contents.mjs",
+    "prepack": "npm run build && npm run check:release-files",
+    "prepublishOnly": "npm run check && npm run test:package"
   },
   "keywords": [
     "mcp",
@@ -37,7 +46,7 @@
     "node": ">=20"
   },
   "dependencies": {
-    "@modelcontextprotocol/sdk": "^1.17.0",
+    "@modelcontextprotocol/sdk": "^1.30.0",
     "@resvg/resvg-js": "^2.6.2",
     "docx": "^9.5.1",
     "jszip": "^3.10.1",
