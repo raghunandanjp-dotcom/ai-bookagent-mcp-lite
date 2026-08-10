@@ -52,7 +52,7 @@ for (const count of [1, 5, 11, 20]) {
   const illustrations = await createQaIllustrations(directory, content.creatures.map((creature) => creature.creatureId));
   const record = await exportPptx(content, directory, illustrations, { ageBand: "6-8", language: "en" });
   const pptxPath = path.join(directory, record.relativePath);
-  const expectedSlides = 1 + count * 3;
+  const expectedSlides = 2 + count * 3;
   if (canRender) {
     run("soffice", ["--headless", "--convert-to", "pdf", "--outdir", directory, pptxPath]);
     const pdfPath = path.join(directory, `${path.parse(record.relativePath).name}.pdf`);

@@ -4,9 +4,16 @@ PDF is an optional, local export. DOCX remains mandatory and is always attempted
 
 ## Page model
 
-The PDF uses A4 portrait pages with 56-point margins. It contains one cover followed by exactly three pages per creature: poem, fun fact, and activity. The deterministic page count is `1 + (3 × creature count)`, giving 4, 16, 34, and 61 pages for 1, 5, 11, and 20 creatures.
+The PDF uses A4 portrait pages with 56-point margins. It contains one cover followed by exactly three pages per creature: poem, fun fact, and activity. The deterministic page count is `1 + (3 × creature count)`, plus one final page when `closingNote` is non-empty.
 
-The optional content `closingNote` is not part of the MVP PDF and does not add a page. Poem titles and intentional line and stanza breaks are preserved exactly; the PDF exporter does not redefine poem structure or age iteration.
+| Creatures | Without closing note | With closing note |
+| ---: | ---: | ---: |
+| 1 | 4 | 5 |
+| 5 | 16 | 17 |
+| 11 | 34 | 35 |
+| 20 | 61 | 62 |
+
+The optional closing note uses the canonical final page shared by HTML, DOCX, PPTX, and PDF. Poem titles and intentional line and stanza breaks are preserved exactly; the PDF exporter does not redefine poem structure or age iteration.
 
 Section pages use a 24-point creature heading, 16-point section heading, 13-point body with 18-point leading, a running header, a `Page X of Y` footer, and proportionally fitted approved artwork. The cover uses the approved cover asset; all three pages for a creature reuse that creature's approved asset. Raw prompts, illustration briefs, placeholder labels, generation messages, and internal alternative-text labels are never rendered.
 
@@ -26,4 +33,4 @@ The file is suitable for A4 home, school, and office printing. It uses vector te
 
 ## Verification
 
-Automated structural tests inspect page count, section coverage, extracted text, forbidden production copy, tagged alternative text, embedded font programs, missing-font behavior, and partial-export behavior. Representative 1, 5, 11, and 20-creature PDFs should also be rasterized locally and reviewed for artwork clipping or distortion, broken glyphs, stanza preservation, footer collisions, and blank pages.
+Automated structural tests inspect page count, section coverage, extracted text, forbidden production copy, tagged alternative text, embedded font programs, missing-font behavior, and partial-export behavior. `npm run qa:pdf:render` generates 1-, 5-, 11-, and 20-creature fixtures with closing notes under `.pdf-qa`; when Poppler is available it renders 5, 17, 35, and 62 pages respectively. Review the full contact set and representative pages for artwork clipping or distortion, broken glyphs, stanza preservation, footer collisions, and blank pages.
