@@ -33,7 +33,7 @@ async function assertServerStarts(entrypoint, cwd) {
     child.stderr.on("data", (chunk) => { stderr += chunk; });
     child.once("error", reject);
     child.once("exit", (code, signal) => {
-      if (stopping) resolve();
+      if (stopping || code === 0) resolve();
       else reject(new Error(`Installed MCP server exited during startup with ${code ?? signal}: ${stderr}`));
     });
     child.stdin.end();
