@@ -33,7 +33,7 @@ function fixture(count) {
       illustrationBrief: `A friendly view of creature ${index + 1} in its habitat.`,
       altText: `Creature ${index + 1} shown clearly in its habitat.`
     })),
-    closingNote: "Excluded from the MVP PDF."
+    closingNote: "Keep learning about every wonderful creature."
   };
 }
 
@@ -49,7 +49,7 @@ for (const count of [1, 5, 11, 20]) {
   const illustrations = await createQaIllustrations(directory, content.creatures.map((creature) => creature.creatureId));
   const record = await exportPdf(content, directory, illustrations);
   const pdfPath = path.join(directory, record.relativePath);
-  const expectedPages = 1 + count * 3;
+  const expectedPages = 2 + count * 3;
   if (canRender) {
     run("pdftoppm", ["-png", "-r", "120", pdfPath, path.join(directory, "page")]);
     const renderedPages = (await readdir(directory)).filter((name) => /^page-\d+\.png$/u.test(name)).length;

@@ -4,20 +4,20 @@ PPTX export is offline, deterministic, and editable. PptxGenJS writes native Off
 
 ## Sequence and slide count
 
-The deck contains exactly `1 + (3 × creature count)` slides. Slide 1 is the cover. Each creature then receives, in approved content order, one poem slide, one fun-fact slide, and one activity slide. A closing note is placed on the cover and never adds a slide.
+The deck contains `1 + (3 × creature count)` slides when there is no closing note, plus one final slide when `closingNote` is non-empty. Slide 1 is the cover. Each creature then receives, in approved content order, one poem slide, one fun-fact slide, and one activity slide. The optional closing note uses the same canonical final page as the HTML, DOCX, and PDF outputs.
 
-| Creatures | Slides |
-| ---: | ---: |
-| 1 | 4 |
-| 5 | 16 |
-| 11 | 34 |
-| 20 | 61 |
+| Creatures | Without closing note | With closing note |
+| ---: | ---: | ---: |
+| 1 | 4 | 5 |
+| 5 | 16 | 17 |
+| 11 | 34 | 35 |
+| 20 | 61 | 62 |
 
 ## Editable layout and accessibility
 
 Slides use the 13.3 × 7.5 inch wide layout. The cover embeds the approved cover artwork. Content slides place editable creature and section text in the left column and proportionally fitted approved artwork in the right column. Every creature's poem, fun-fact, and activity slides reference the same approved source digest. Alternative text is stored in DrawingML and is not rendered as a label. Object creation follows reading order: creature title, section label, body, artwork, and slide number.
 
-Text uses dark navy or ink on cream, and accent colors are never the only indication of section meaning. Generated decks include title, author, subject, creator, and language metadata. Future inserted images must carry the supplied alternative text; actual image, audio, video, chart, table, hyperlink, Markdown, and HTML insertion are outside this MVP.
+Text uses dark navy or ink on cream, and accent colors are never the only indication of section meaning. Generated decks include title, author, subject, creator, and language metadata. Future inserted images must carry supplied alternative text; audio, video, chart, table, hyperlink, Markdown, and HTML insertion are outside this MVP.
 
 ## Typography and density
 
@@ -40,4 +40,4 @@ Book language must match the requested language, and every poem, fact, and activ
 
 `npm run test:pptx` generates and structurally inspects representative decks. It verifies slide counts and order, editable OOXML text, metadata, embedded media, alternative text, per-creature digest reuse, fonts, absence of forbidden production copy, and absence of shrink-to-fit instructions.
 
-`npm run qa:pptx:render` builds 1-, 5-, 11-, and 20-creature decks under the ignored `.pptx-qa` directory and uses LibreOffice plus Poppler, when installed, to render them for visual review. Review the cover and first, middle, and last creature triplets at full size, then scan the complete contact set for clipping, distortion, overlap, unexpected wrapping, missing glyphs, asset substitution, forbidden labels, and slide-number discontinuities. Kannada should also be opened in Microsoft PowerPoint when available before production use.
+`npm run qa:pptx:render` builds 1-, 5-, 11-, and 20-creature decks with closing notes under the ignored `.pptx-qa` directory and uses LibreOffice plus Poppler, when installed, to render them for visual review. Review the cover, closing slide, and first, middle, and last creature triplets at full size, then scan the complete contact set for clipping, distortion, overlap, unexpected wrapping, missing glyphs, asset substitution, forbidden labels, and slide-number discontinuities. Kannada should also be opened in Microsoft PowerPoint when available before production use.
