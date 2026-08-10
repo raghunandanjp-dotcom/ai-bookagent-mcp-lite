@@ -8,11 +8,11 @@ This is the release test inventory and evidence log. Automated structure checks,
 | --- | --- |
 | Cycle ID | `TC-2026-08-10-RC1` |
 | Target | `v0.1.0-rc.1` |
-| Merged baseline | `5b4a293010b1db52f9997095c77118b3c5a81930` (`main`, PR #33 / ENH-0009 merged) |
-| Working branch | `codex/p1-v0.1.0-rc1-readiness` |
+| Merged baseline | `9437a9d118eec8856a02c6727b50a0819b31311e` (`main`, PR #35 / RC-readiness merged) |
+| Working branch | `agent/p2-kannada-canva-qualification` |
 | Started | 2026-08-10 (Asia/Calcutta) |
 | Runtime | Windows; Node.js 24.14.1 |
-| Overall status | In progress: local install, full automated gate, smoke, boundary generation, and PDF visual QA pass; DOCX/PPTX rendering, current English/Kannada human evidence, Canva, and publication gates remain open |
+| Overall status | In progress: local install, 93-test automated gate, smoke, boundary generation, and PDF visual QA pass; DOCX/PPTX rendering, current English/Kannada human evidence, Canva, and publication gates remain open |
 
 The previous cycle ended with `npm.cmd run check` passing 92/92 tests at the ENH-0009 branch tip (R25 in the prior log). That is useful merged-baseline history, but it is not substituted for a final run on the RC candidate commit.
 
@@ -30,7 +30,7 @@ The normal code gate is `npm run check`: TypeScript build, published entrypoint 
 
 | Area | Suite | Tests | Coverage |
 | --- | --- | ---: | --- |
-| Canva | `tests/canva.test.ts` | 12 | Readiness, consent/decline/retry, Kannada payload, parity/result validation |
+| Canva | `tests/canva.test.ts` | 13 | Readiness, consent/decline/retry, Kannada payload, parity/result validation, explicit edit-path enforcement |
 | Workflow | `tests/workflow.test.ts` | 8 | Revisions, selection idempotency, rework/locks, design and DOCX gates, partial export failure |
 | Content validation | `tests/validation.test.ts` | 6 | Coverage, facts/review flags, page/word/overflow limits, Kannada fields |
 | Delivery summary | `tests/delivery-summary.test.ts` | 9 | Review status, totals, artifacts, Canva next actions |
@@ -44,7 +44,7 @@ The normal code gate is `npm run check`: TypeScript build, published entrypoint 
 | Project state | `tests/project.test.ts` | 5 | Mandatory DOCX, containment/absolute MCP paths, legacy and malformed state |
 | Selection | `tests/selection.test.ts` | 5 | Batch/reuse/regeneration/idempotency/order rules |
 
-Vitest contains **92 tests across 13 suites**. `scripts/smoke-core.mts` adds one representative domain-flow smoke script.
+Vitest contains **93 tests across 13 suites**. `scripts/smoke-core.mjs` adds one representative domain-flow smoke script.
 
 ## Structural and render inventory
 
@@ -74,6 +74,9 @@ The HTML-first design and exporters include the closing page when `closingNote` 
 | RC1-R12 | Local Markdown target check | Passed | Every relative link target across 14 Markdown files exists. External publication links are not represented as completed releases. |
 | RC1-R13 | Two pre-final `npm.cmd run check` attempts | Failed (documentation portability) | Both reached 92/92 passing tests; portability then rejected realistic user-home path examples in README. Examples were replaced with neutral absolute placeholders. |
 | RC1-R14 | Final `npm.cmd run check` | Passed | TypeScript build, entrypoints, 92/92 tests across 13/13 suites, and portability scan all passed. |
+| RC1-R15 | Targeted Kannada/Canva contract run | Passed | 68/68 tests across 8 suites passed. This is automated structural evidence only; no fluent reviewer, Kannada render, or Canva connector was exercised. |
+| RC1-R16 | P2 DOCX/PPTX fixture generation | Partial | All English 1/5/11/20 fixtures generated. Rendering remained blocked without LibreOffice, and `BOOK_AGENT_KANNADA_FONT_PATH` was unset, so this provides no Kannada glyph evidence. |
+| RC1-R17 | `npm.cmd run check` after merging current `main` into P2 | Passed | TypeScript build, entrypoints, 93/93 tests across 13/13 suites, and portability scan all passed. |
 
 ## Merged latest-change coverage
 
@@ -85,7 +88,7 @@ The HTML-first design and exporters include the closing page when `closingNote` 
 | `DES-001` | Executable/linked/embedded SVG | Strict allowlist rejection before acceptance | Covered by suite; ENH-0009 merged in PR #33 | None |
 | `DES-002` | Stale/mutated HTML design | Source/design/digest binding blocks approval/export | Covered by suite; ENH-0009 merged in PR #33 | Current HTML visual approval |
 | `DES-003` | Cross-format page-plan divergence | Canonical cover/sections/optional closing page | Structural tests pass; harness count correction in this change | DOCX/PPTX reference render |
-| `CAN-009` | Canva result does not match approved design | Consent and exact parity metadata required | Contract tests pass | Real authorized connector and visual review |
+| `CAN-009` | Canva result does not match approved design or return an explicit edit URL | Consent, exact parity metadata, and `/design/{designId}/edit` required | 13 contract tests pass | Real authorized connector, edit access, and visual review |
 
 ## Findings and blockers
 
@@ -95,8 +98,8 @@ The HTML-first design and exporters include the closing page when `closingNote` 
 | `RC-TST-002` | Low | Resolved | PPTX/PDF harnesses used pre-ENH-0009 counts despite non-empty closing notes. | Corrected and verified at 5/17/35/62 in RC1-R10. |
 | `RC-TST-003` | Low | Resolved for this cycle | One PDF test timed out only in the first concurrent full suite and passed immediately in isolation. | Final clean 92/92 run passed; monitor for recurrence without claiming a product defect. |
 | `RC-TST-004` | Medium | Pending | No current-baseline English end-to-end human-reviewed artifact exists. `cld-eng-04` stops at `content_review_required`. | Complete one five-creature English run through design/DOCX/secondary-output review without committing the project. |
-| `RC-TST-005` | Medium | Pending | Kannada automation cannot establish linguistic quality or glyph rendering. | Obtain fluent reviewer and rendered-glyph sign-off on the final representative artifact. |
-| `RC-TST-006` | Medium | Pending | Real Canva authorization, consent, edit URL, parity, and visual behavior are untested. | Complete one approved connector run after local gates. |
+| `RC-TST-005` | Medium | Pending | Kannada automation cannot establish linguistic quality or glyph rendering. | Complete [`KAN-ACC-001`](experimental-qualification.md#kannada-acceptance-kan-acc-001) on the final representative artifact. |
+| `RC-TST-006` | Medium | Pending | Real Canva authorization, consent, edit URL, parity, and visual behavior are untested. | Complete [`CAN-ACC-001`](experimental-qualification.md#real-canva-acceptance-can-acc-001) after local gates. |
 | `RC-TST-007` | Release | Pending approval | Repository visibility, reviewer invitation, tag, GitHub release, and npm publication are maintainer-controlled external actions. | Follow the exact ordered steps in the RC checklist only after explicit approval. |
 
 ## Release-candidate tracker
@@ -104,9 +107,9 @@ The HTML-first design and exporters include the closing page when `closingNote` 
 | Gate | Status | Current evidence / next action |
 | --- | --- | --- |
 | Lockfile-based local install | Passed | RC1-R5 |
-| TypeScript build and entrypoints | Passed | RC1-R14 |
-| Automated 92-test suite | Passed | 92/92 across 13 suites in RC1-R14 |
-| Portability scan | Passed | RC1-R14 |
+| TypeScript build and entrypoints | Passed | RC1-R17 |
+| Automated 93-test suite | Passed | 93/93 across 13 suites in RC1-R17 |
+| Portability scan | Passed | RC1-R17 |
 | Core smoke | Passed | RC1-R8 |
 | Boundary artifact generation | Passed | RC1-R9; regenerate after harness correction |
 | PDF Poppler render/visual QA | Passed | 5/17/35/62 pages; all 119 scanned plus full-size representatives in RC1-R10/R11 |
@@ -123,6 +126,6 @@ The HTML-first design and exporters include the closing page when `closingNote` 
 2. Generate all 1/5/11/20 format fixtures; structurally verify counts and packages.
 3. Render PDF locally with Poppler and inspect every page by contact sheet plus representative full-size pages.
 4. Render DOCX/PPTX on a LibreOffice + Poppler machine and record exact page/slide counts and visual inspection.
-5. Run one five-creature English Claude happy path and one one-creature Kannada human-reviewed path.
-6. Run Canva once, only after local acceptance and explicit consent.
+5. Run one five-creature English Claude happy path and complete the one-creature [`KAN-ACC-001`](experimental-qualification.md#kannada-acceptance-kan-acc-001) procedure.
+6. Run Canva once using [`CAN-ACC-001`](experimental-qualification.md#real-canva-acceptance-can-acc-001), only after local acceptance and explicit consent.
 7. Record candidate commit, artifacts, reviewers, every blocker disposition, and the go/no-go decision in the [RC checklist](release-checklist-v0.1.0-rc.1.md).

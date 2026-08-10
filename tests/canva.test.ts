@@ -147,6 +147,7 @@ describe("Canva connector result validation", () => {
     "https://canva.example/design/DAGabc/edit",
     "https://user:secret@www.canva.com/design/DAGabc/edit",
     "https://www.canva.com/templates/DAGabc",
+    "https://www.canva.com/design/DAGabc",
     "https://www.canva.com/design/other/edit"
   ])("rejects a non-genuine or mismatched URL: %s", (editUrl) => {
     expect(() => recordCanvaResult({ outcome: "success", designId: "DAGabc", editUrl })).toThrow();

@@ -16,7 +16,7 @@ function isMatchingCanvaEditUrl(value: string, designId: string): boolean {
   const hostname = url.hostname.toLocaleLowerCase("en");
   if (url.protocol !== "https:" || url.username || url.password || (url.port && url.port !== "443")) return false;
   if (hostname !== "canva.com" && !hostname.endsWith(".canva.com")) return false;
-  const match = url.pathname.match(/^\/design\/([^/]+)(?:\/edit)?\/?$/u);
+  const match = url.pathname.match(/^\/design\/([^/]+)\/edit\/?$/u);
   if (!match) return false;
   try { return decodeURIComponent(match[1]) === designId; } catch { return false; }
 }
