@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -44,6 +45,20 @@ describe("canonical BookDesign and code-native illustrations", () => {
     expect(assets.map((asset) => asset.assetId)).toEqual(["cover", "creature-creature-1"]);
     expect(assets.every((asset) => asset.source === "code_native" && asset.mimeType === "image/png" && asset.width === 1600)).toBe(true);
     expect(await readFile(path.join(projectDir, assets[0]!.relativePath))).toEqual(expect.objectContaining({ length: assets[0]!.bytes }));
+
+    const repeatedAssets = await importCodeNativeIllustrationSet(projectDir, content, input);
+    for (const [index, asset] of assets.entries()) {
+      const provenance = asset.provenance.notes?.match(/^Sanitized SVG source: (.+); SVG SHA-256: ([a-f0-9]{64})$/u);
+      expect(provenance).not.toBeNull();
+      const [, sourceRelativePath, provenanceDigest] = provenance!;
+      const sourceBytes = await readFile(path.join(projectDir, sourceRelativePath!));
+      const persistedDigest = createHash("sha256").update(sourceBytes).digest("hex");
+      expect(path.basename(sourceRelativePath!)).toContain(`-${persistedDigest.slice(0, 12)}.svg`);
+      expect(provenanceDigest).toBe(persistedDigest);
+      expect(repeatedAssets[index]!.provenance.notes).toBe(asset.provenance.notes);
+      expect(await readFile(path.join(projectDir, sourceRelativePath!))).toEqual(sourceBytes);
+    }
+
     await expect(importCodeNativeIllustrationSet(projectDir, content, input.slice(0, 1))).rejects.toThrow(/exactly match the required slots/i);
   }, 15_000);
 

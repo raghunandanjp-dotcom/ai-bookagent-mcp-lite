@@ -95,13 +95,14 @@ export async function importCodeNativeIllustrationSet(
   for (const item of parsed) {
     const id = assetId(item.role, item.creatureId);
     const svg = sanitizeCodeNativeSvg(item.svg);
-    const svgDigest = createHash("sha256").update(svg).digest("hex");
+    const svgBytes = Buffer.from(`${svg}\n`, "utf8");
+    const svgDigest = createHash("sha256").update(svgBytes).digest("hex");
     const png = Buffer.from(new Resvg(svg, { fitTo: { mode: "width", value: 1600 } }).render().asPng());
     const inspected = inspectIllustration(png);
     const pngDigest = createHash("sha256").update(png).digest("hex");
     const svgRelativePath = path.posix.join("assets", "illustrations", "source", `${id}-${svgDigest.slice(0, 12)}.svg`);
     const pngRelativePath = path.posix.join("assets", "illustrations", `${id}-${pngDigest.slice(0, 12)}.png`);
-    await writeAtomic(resolveInside(projectDir, svgRelativePath), `${svg}\n`);
+    await writeAtomic(resolveInside(projectDir, svgRelativePath), svgBytes);
     await writeAtomic(resolveInside(projectDir, pngRelativePath), png);
     assets.push(illustrationAssetSchema.parse({
       assetId: id,
