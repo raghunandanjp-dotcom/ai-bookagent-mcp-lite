@@ -26,6 +26,15 @@ function explicitLines(value: string): number {
   return value.split(/\r?\n/u).length;
 }
 
+// UTF-8 bytes decoded as Windows-1252 commonly produce a Latin-1 lead
+// character followed by either a C1 byte or its Windows-1252 Unicode mapping.
+// Rejecting these signatures is safer than attempting an ambiguous repair.
+const mojibakeSequence = /\uFFFD|[\u00C2-\u00F4](?:[\u0080-\u00BF\u0152\u0153\u0160\u0161\u0178\u017D\u017E\u0192\u02C6\u02DC\u2013\u2014\u2018\u2019\u201A\u201C\u201D\u201E\u2020\u2021\u2022\u2026\u2030\u2039\u203A\u20AC\u2122])/u;
+
+function hasMojibake(value: string): boolean {
+  return mojibakeSequence.test(value);
+}
+
 export function validateBookContent(
   input: unknown,
   approvedCreatures: Creature[],
@@ -57,6 +66,29 @@ export function validateBookContent(
   }
 
   const content = parsed.data;
+  const textFields: Array<{ path: string; value: string }> = [
+    { path: "title", value: content.title },
+    ...content.creatures.flatMap((creature, index) => [
+      { path: `creatures.${index}.displayName`, value: creature.displayName },
+      { path: `creatures.${index}.poem.title`, value: creature.poem.title },
+      { path: `creatures.${index}.poem.text`, value: creature.poem.text },
+      { path: `creatures.${index}.funFact.text`, value: creature.funFact.text },
+      { path: `creatures.${index}.activity.text`, value: creature.activity.text },
+      { path: `creatures.${index}.illustrationBrief`, value: creature.illustrationBrief },
+      { path: `creatures.${index}.altText`, value: creature.altText }
+    ]),
+    ...(content.closingNote ? [{ path: "closingNote", value: content.closingNote }] : [])
+  ];
+  for (const field of textFields) {
+    if (hasMojibake(field.value)) {
+      issues.push({
+        level: "error",
+        code: "content_encoding_mojibake",
+        path: field.path,
+        message: "Reader-facing text contains likely encoding corruption. Resubmit valid Unicode text without mojibake or replacement characters."
+      });
+    }
+  }
   const pptxProfile = PPTX_AGE_PROFILES[content.effectiveAgeBand];
   const selectedAgeBand = request?.ageBand ?? content.selectedAgeBand;
   if (content.selectedAgeBand !== selectedAgeBand) {

@@ -313,6 +313,10 @@ export async function replaceCreatureContent(projectDir: string, creatureInput: 
   creatures[existingIndex] = replacement;
   const content = { ...project.content, creatures };
   const validation = validateBookContent(content, project.selection.current, project.request);
+  const encodingIssues = validation.report.issues.filter((issue) => issue.code === "content_encoding_mojibake");
+  if (encodingIssues.length > 0) {
+    throw new Error(`Replacement creature content contains encoding corruption at: ${encodingIssues.map((issue) => issue.path).join(", ")}.`);
+  }
   const updated = await persistMutation(projectDir, project, {
     stage: validation.report.valid
       ? project.request.language === "kn" ? "language_review_required" : "content_review_required"

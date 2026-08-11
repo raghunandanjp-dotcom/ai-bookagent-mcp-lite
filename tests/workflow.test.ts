@@ -1,4 +1,4 @@
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -14,6 +14,7 @@ import {
   getCanvaHandoff,
   initializeProject,
   reworkPrimaryOutput,
+  replaceCreatureContent,
   selectCanvaDesign,
   reiterateAuthoringPrompt,
   setCanvaCapability,
@@ -145,6 +146,25 @@ describe("persisted workflow bookkeeping", () => {
     expect(reloadedExport.revision).toBe(exported.revision);
     expect(reloadedExport.updatedAt).toBe(exported.updatedAt);
     expect(reloadedExport.exports).toEqual(exported.exports);
+  });
+
+  it("rejects mojibake creature replacements without changing persisted project bytes", async () => {
+    await initializeProject(projectDir, { title: "Ocean Friends", theme: "ocean creatures", creatureCount: 1 });
+    await updateCreatureSelection(projectDir, [creature]);
+    await approveCreatureSelection(projectDir);
+    await acceptBookContent(projectDir, content);
+    const before = await loadProject(projectDir);
+    const beforeBytes = await readFile(path.join(projectDir, "book-project.json"));
+    const replacement = structuredClone(content.creatures[0]!);
+    replacement.funFact.text = "An octopus\u00C3\u00A2\u00E2\u201A\u00AC\u00E2\u201E\u00A2s three hearts are remarkable.";
+
+    await expect(replaceCreatureContent(projectDir, replacement)).rejects.toThrow(/encoding corruption.*funFact\.text/i);
+
+    const after = await loadProject(projectDir);
+    const afterBytes = await readFile(path.join(projectDir, "book-project.json"));
+    expect(after).toMatchObject({ revision: before.revision, sourceRevision: before.sourceRevision });
+    expect(after.content).toEqual(before.content);
+    expect(afterBytes).toEqual(beforeBytes);
   });
 
   it("does not persist repeated identical creature-selection submissions", async () => {
