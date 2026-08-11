@@ -167,6 +167,68 @@ describe("persisted workflow bookkeeping", () => {
     expect(afterBytes).toEqual(beforeBytes);
   });
 
+  it("permits sequential correction of historical mojibake in multiple creatures", async () => {
+    const seahorse = { ...creature, id: "seahorse", name: "Seahorse" };
+    const historicalContent = structuredClone(content);
+    historicalContent.creatures.push({
+      ...structuredClone(content.creatures[0]!),
+      creatureId: "seahorse",
+      displayName: "Seahorse"
+    });
+    historicalContent.creatures[0]!.funFact.text = "An octopus\u00C3\u00A2\u00E2\u201A\u00AC\u00E2\u201E\u00A2s three hearts are remarkable.";
+    historicalContent.creatures[1]!.funFact.text = "A seahorse\u00C3\u00A2\u00E2\u201A\u00AC\u00E2\u201E\u00A2s tail can grip sea grass.";
+
+    await initializeProject(projectDir, { title: "Ocean Friends", theme: "ocean creatures", creatureCount: 2 });
+    await updateCreatureSelection(projectDir, [creature, seahorse]);
+    await approveCreatureSelection(projectDir);
+    await acceptBookContent(projectDir, historicalContent);
+
+    const firstReplacement = structuredClone(content.creatures[0]!);
+    const first = await replaceCreatureContent(projectDir, firstReplacement);
+    expect(first.report.issues.filter((issue) => issue.code === "content_encoding_mojibake")).toEqual([
+      expect.objectContaining({ path: "creatures.1.funFact.text" })
+    ]);
+    expect(first.project).toMatchObject({ revision: 5, sourceRevision: 4 });
+
+    const secondReplacement = structuredClone(historicalContent.creatures[1]!);
+    secondReplacement.funFact.text = "A seahorse's tail can grip sea grass.";
+    const second = await replaceCreatureContent(projectDir, secondReplacement);
+    expect(second.report.issues.filter((issue) => issue.code === "content_encoding_mojibake")).toEqual([]);
+    expect(second.project).toMatchObject({ revision: 6, sourceRevision: 5 });
+    expect((await loadProject(projectDir)).content).toEqual(second.project.content);
+  });
+
+  it("rejects a new encoding-error path while preserving a historically corrupted project byte-for-byte", async () => {
+    const seahorse = { ...creature, id: "seahorse", name: "Seahorse" };
+    const historicalContent = structuredClone(content);
+    historicalContent.creatures.push({
+      ...structuredClone(content.creatures[0]!),
+      creatureId: "seahorse",
+      displayName: "Seahorse"
+    });
+    historicalContent.creatures[0]!.funFact.text = "An octopus\u00C3\u00A2\u00E2\u201A\u00AC\u00E2\u201E\u00A2s three hearts are remarkable.";
+    historicalContent.creatures[1]!.funFact.text = "A seahorse\u00C3\u00A2\u00E2\u201A\u00AC\u00E2\u201E\u00A2s tail can grip sea grass.";
+
+    await initializeProject(projectDir, { title: "Ocean Friends", theme: "ocean creatures", creatureCount: 2 });
+    await updateCreatureSelection(projectDir, [creature, seahorse]);
+    await approveCreatureSelection(projectDir);
+    await acceptBookContent(projectDir, historicalContent);
+    const before = await loadProject(projectDir);
+    const beforeBytes = await readFile(path.join(projectDir, "book-project.json"));
+    const replacement = structuredClone(content.creatures[0]!);
+    replacement.altText = "An octopus\u00C3\u00A2\u00E2\u201A\u00AC\u00E2\u201E\u00A2s arms wave near coral.";
+
+    await expect(replaceCreatureContent(projectDir, replacement)).rejects.toThrow(
+      /encoding corruption at: creatures\.0\.altText\.$/i
+    );
+
+    const after = await loadProject(projectDir);
+    const afterBytes = await readFile(path.join(projectDir, "book-project.json"));
+    expect(after).toMatchObject({ revision: before.revision, sourceRevision: before.sourceRevision });
+    expect(after.content).toEqual(before.content);
+    expect(afterBytes).toEqual(beforeBytes);
+  });
+
   it("does not persist repeated identical creature-selection submissions", async () => {
     const creatures = ["octopus", "orca", "seal", "walrus", "dolphin"].map((id) => ({
       ...creature,

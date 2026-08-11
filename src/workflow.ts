@@ -312,10 +312,19 @@ export async function replaceCreatureContent(projectDir: string, creatureInput: 
   const creatures = [...project.content.creatures];
   creatures[existingIndex] = replacement;
   const content = { ...project.content, creatures };
+  const previousEncodingPaths = new Set(
+    validateBookContent(project.content, project.selection.current, project.request).report.issues
+      .filter((issue) => issue.code === "content_encoding_mojibake")
+      .map((issue) => issue.path)
+  );
   const validation = validateBookContent(content, project.selection.current, project.request);
   const encodingIssues = validation.report.issues.filter((issue) => issue.code === "content_encoding_mojibake");
-  if (encodingIssues.length > 0) {
-    throw new Error(`Replacement creature content contains encoding corruption at: ${encodingIssues.map((issue) => issue.path).join(", ")}.`);
+  const replacementPath = `creatures.${existingIndex}.`;
+  const blockingEncodingIssues = encodingIssues.filter(
+    (issue) => issue.path.startsWith(replacementPath) || !previousEncodingPaths.has(issue.path)
+  );
+  if (blockingEncodingIssues.length > 0) {
+    throw new Error(`Replacement creature content contains encoding corruption at: ${blockingEncodingIssues.map((issue) => issue.path).join(", ")}.`);
   }
   const updated = await persistMutation(projectDir, project, {
     stage: validation.report.valid
