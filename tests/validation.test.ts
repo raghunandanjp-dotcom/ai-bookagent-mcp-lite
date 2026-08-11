@@ -65,6 +65,33 @@ describe("content validation", () => {
     expect(validateBookContent(input, approved).report.pageCount).toBe(5);
   });
 
+  it("rejects mojibake at exact field paths while accepting valid Unicode punctuation", () => {
+    const creature = {
+      creatureId: "octopus", displayName: "Octopus", poem: poem(),
+      funFact: section("An octopus has three hearts, and it’s remarkable."),
+      activity: section("Practice “octopus breathing” with a grown-up."),
+      illustrationBrief: "A friendly octopus.", altText: "An octopus."
+    };
+    const base = {
+      schemaVersion: "1.1", selectedAgeBand: "3-5", effectiveAgeBand: "3-5", generationAttempt: 0,
+      title: "Ocean Friends", language: "en", creatures: [creature]
+    };
+    expect(validateBookContent(base, approved).report.valid).toBe(true);
+
+    const corrupted = structuredClone(base);
+    corrupted.creatures[0]!.funFact.text = "An octopus has three hearts\u00C3\u00A2\u00E2\u201A\u00AC\u00E2\u201E\u00A2s remarkable.";
+    corrupted.creatures[0]!.activity.text = "Practice \u00E2\u20AC\u0153octopus breathing\u00E2\u20AC\u009D.";
+    corrupted.creatures[0]!.altText = "An octopus \uFFFD underwater.";
+
+    const result = validateBookContent(corrupted, approved);
+    expect(result.report.valid).toBe(false);
+    expect(result.report.issues).toEqual(expect.arrayContaining([
+      expect.objectContaining({ code: "content_encoding_mojibake", path: "creatures.0.funFact.text" }),
+      expect.objectContaining({ code: "content_encoding_mojibake", path: "creatures.0.activity.text" }),
+      expect.objectContaining({ code: "content_encoding_mojibake", path: "creatures.0.altText" })
+    ]));
+  });
+
   it("blocks DOCX content that exceeds the age-specific page budget", () => {
     const longText = Array.from({ length: 71 }, () => "word").join(" ");
     const input = {
