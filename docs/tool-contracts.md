@@ -60,6 +60,10 @@ Accepts the reviewed current DOCX and unlocks PPTX, PDF, and Canva. Acceptance b
 
 Accepts validated replacement content, advances the source revision, makes old outputs stale, and creates a refreshed HTML design preview. A project permits at most two reworks. The refreshed design must be reviewed before DOCX is regenerated; rework never silently publishes against the previously approved layout.
 
+## `replace_closing_note`
+
+Accepts only a non-empty book-level `closingNote` string, trimmed and limited to 240 characters. It cannot carry or alter any other content field. A successful correction increments both the project revision and source revision once, preserves authoring-iteration and primary-output-rework allowances, makes the prior design and exports stale, clears the design preview and primary-output readiness, and requires a fresh design review before export. Invalid, oversized, layout-invalid, wrong-script, or mojibake input is rejected without changing project bytes.
+
 A blocking content-validation error prevents document generation.
 
 The DOCX logical page count is:

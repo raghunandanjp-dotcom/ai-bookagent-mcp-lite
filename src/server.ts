@@ -2,7 +2,7 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
-import { creatureSchema, interactiveBookRequestSchema, illustrationRoleSchema } from "./domain.ts";
+import { closingNoteCorrectionSchema, creatureSchema, interactiveBookRequestSchema, illustrationRoleSchema } from "./domain.ts";
 import {
   acceptBookContent,
   acceptPrimaryOutput,
@@ -20,6 +20,7 @@ import {
   importProjectIllustration,
   importProjectCodeNativeIllustrationSet,
   reworkPrimaryOutput,
+  replaceClosingNote,
   replaceCreatureContent,
   reviewProjectIllustration,
   selectCanvaDesign,
@@ -227,6 +228,18 @@ server.registerTool(
     inputSchema: { projectDir: z.string().min(1), content: z.unknown() }
   },
   async ({ projectDir, content }) => text(await reworkPrimaryOutput(projectDir, content))
+);
+
+server.registerTool(
+  "replace_closing_note",
+  {
+    description: "Replace only the validated book-level closing note without consuming authoring iterations or primary-output reworks. Existing designs and outputs become stale and require fresh review.",
+    inputSchema: {
+      projectDir: z.string().min(1),
+      closingNote: closingNoteCorrectionSchema
+    }
+  },
+  async ({ projectDir, closingNote }) => text(await replaceClosingNote(projectDir, closingNote))
 );
 
 server.registerTool(
