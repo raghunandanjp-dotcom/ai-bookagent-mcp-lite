@@ -300,6 +300,57 @@ describe("persisted workflow bookkeeping", () => {
     expect(await loadProject(projectDir)).toEqual(before);
   });
 
+  it("rejects a wrong-script closing note for a Kannada project with byte-identical state and counters", async () => {
+    const kannadaSection = (text: string) => ({
+      text,
+      language: "kn" as const,
+      reviewStatus: "needs_review" as const
+    });
+    const kannadaContent = {
+      ...content,
+      title: "ಸಮುದ್ರ ಸ್ನೇಹಿತರು",
+      language: "kn" as const,
+      closingNote: "ಸಮುದ್ರ ಜೀವಿಗಳೊಂದಿಗೆ ಹಂಚಿಕೊಳ್ಳುತ್ತಾ ಕಲಿಯಿರಿ.",
+      creatures: [{
+        ...content.creatures[0]!,
+        displayName: "ಆಕ್ಟೋಪಸ್",
+        poem: {
+          ...kannadaSection("ಎಂಟು ಕೈಗಳು ನೀರಿನಲ್ಲಿ ಅಲೆಯುತ್ತವೆ\nಬಣ್ಣದ ಹವಳದ ಬಳಿ ಕುಣಿಯುತ್ತವೆ\nಸಮುದ್ರದ ಅಲೆಯಲ್ಲಿ ಮೆಲ್ಲಗೆ ಸಾಗುತ್ತವೆ\n\nಮೀನುಗಳ ಜೊತೆಗೆ ಸಂತಸ ಹಂಚುತ್ತವೆ\nನೀಲಿ ನೀರಿನಲ್ಲಿ ಚೆನ್ನಾಗಿ ಈಜುತ್ತವೆ\nಆಕ್ಟೋಪಸ್ ಎಲ್ಲರಿಗೂ ಕೈ ಬೀಸುತ್ತದೆ"),
+          title: "ಅಲೆಯುವ ಕೈಗಳು",
+          structureVersion: "1.0" as const,
+          rhymeScheme: "AAB" as const
+        },
+        funFact: kannadaSection("ಆಕ್ಟೋಪಸ್‌ಗೆ ಮೂರು ಹೃದಯಗಳಿವೆ."),
+        activity: kannadaSection("ಆಕ್ಟೋಪಸ್‌ನ ಎಂಟು ಕೈಗಳನ್ನು ಚಿತ್ರಿಸಿ ಎಣಿಸಿ.")
+      }]
+    };
+    await initializeProject(projectDir, {
+      title: "ಸಮುದ್ರ ಸ್ನೇಹಿತರು",
+      theme: "ಸಮುದ್ರ ಜೀವಿಗಳು",
+      ageBand: "6-8",
+      language: "kn",
+      creatureCount: 1
+    });
+    await updateCreatureSelection(projectDir, [creature]);
+    await approveCreatureSelection(projectDir);
+    const accepted = await acceptBookContent(projectDir, kannadaContent);
+    expect(accepted.report.valid).toBe(true);
+    const before = await loadProject(projectDir);
+    const beforeBytes = await readFile(path.join(projectDir, "book-project.json"));
+
+    await expect(replaceClosingNote(projectDir, "Keep sharing the ocean.")).rejects.toThrow(/Kannada content must contain Kannada script/i);
+
+    const after = await loadProject(projectDir);
+    expect(await readFile(path.join(projectDir, "book-project.json"))).toEqual(beforeBytes);
+    expect(after).toEqual(before);
+    expect(after).toMatchObject({
+      revision: before.revision,
+      sourceRevision: before.sourceRevision,
+      reworksUsed: before.reworksUsed,
+      contentGeneration: before.contentGeneration
+    });
+  });
+
   it("requires generated content before closing-note correction and preserves project bytes on failure", async () => {
     await initializeProject(projectDir, { title: "Ocean Friends", theme: "ocean creatures", creatureCount: 1 });
     const beforeBytes = await readFile(path.join(projectDir, "book-project.json"));

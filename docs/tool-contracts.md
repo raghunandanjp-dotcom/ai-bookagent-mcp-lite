@@ -62,7 +62,7 @@ Accepts validated replacement content, advances the source revision, makes old o
 
 ## `replace_closing_note`
 
-Accepts only a non-empty book-level `closingNote` string, trimmed and limited to 240 characters. It cannot carry or alter any other content field. A successful correction increments both the project revision and source revision once, preserves authoring-iteration and primary-output-rework allowances, makes the prior design and exports stale, clears the design preview and primary-output readiness, and requires a fresh design review before export. Invalid, oversized, layout-invalid, wrong-script, or mojibake input is rejected without changing project bytes.
+Accepts only a non-empty book-level `closingNote` string, trimmed and limited to 240 characters. It cannot carry or alter any other content field. A successful correction increments both the project revision and source revision once, preserves authoring-iteration and primary-output-rework allowances, makes the prior design and exports stale, clears the design preview and primary-output readiness, and requires a fresh design review before export. Invalid, oversized, wrong-script, or mojibake input is rejected without changing project bytes. A closing-note-only DOCX overflow is unreachable under this schema: exceeding the 120-word closing-note budget requires at least 241 characters, so the stricter character limit rejects that input first.
 
 A blocking content-validation error prevents document generation.
 
