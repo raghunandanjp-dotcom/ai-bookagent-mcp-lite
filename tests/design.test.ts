@@ -22,6 +22,22 @@ afterEach(async () => Promise.all(temporaryDirectories.splice(0).map((directory)
 
 const safeSvg = (fill: string) => `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 500"><rect x="0" y="0" width="800" height="500" fill="${fill}"/><circle cx="400" cy="250" r="120" fill="#FFFFFF" stroke="#17324D" stroke-width="12"/></svg>`;
 
+function relativeLuminance(hexColor: string): number {
+  const channels = hexColor.slice(1).match(/.{2}/gu)!.map((channel) => Number.parseInt(channel, 16) / 255);
+  const [red, green, blue] = channels.map((channel) => channel <= 0.04045
+    ? channel / 12.92
+    : ((channel + 0.055) / 1.055) ** 2.4);
+  return 0.2126 * red! + 0.7152 * green! + 0.0722 * blue!;
+}
+
+function contrastRatio(firstColor: string, secondColor: string): number {
+  const firstLuminance = relativeLuminance(firstColor);
+  const secondLuminance = relativeLuminance(secondColor);
+  const lighter = Math.max(firstLuminance, secondLuminance);
+  const darker = Math.min(firstLuminance, secondLuminance);
+  return (lighter + 0.05) / (darker + 0.05);
+}
+
 describe("canonical BookDesign and code-native illustrations", () => {
   it("accepts only the constrained, dependency-free SVG subset", () => {
     expect(sanitizeCodeNativeSvg(safeSvg("#2A9D8F"))).toContain("<circle");
@@ -72,6 +88,8 @@ describe("canonical BookDesign and code-native illustrations", () => {
     ]);
     const design = buildBookDesign(content, assets, 5, 1, "2026-08-04T10:00:00.000Z");
     expect(design.pages.map((page) => page.type)).toEqual(["cover", "poem", "funFact", "activity", "closing"]);
+    expect(contrastRatio(design.theme.colors.text, design.theme.colors.accent)).toBeGreaterThanOrEqual(4.5);
+    expect(contrastRatio(design.theme.colors.primary, design.theme.colors.accent)).toBeGreaterThanOrEqual(4.5);
     const html = renderBookDesignHtml(design, {
       cover: { href: "../assets/cover.png", altText: "Accessible cover." },
       "creature-creature-1": { href: "../assets/creature.png", altText: "Accessible creature." }
@@ -79,6 +97,8 @@ describe("canonical BookDesign and code-native illustrations", () => {
     expect(html).toContain('data-design-revision="1"');
     expect(html).toContain('alt="Accessible creature."');
     expect(html).toContain("Keep Exploring");
+    expect(html).toContain(`background:${design.theme.colors.background};color:${design.theme.colors.text}`);
+    expect(html).toContain(`.closing{background:${design.theme.colors.accent}}`);
     expect(html).not.toMatch(/https?:\/\//u);
   }, 15_000);
 

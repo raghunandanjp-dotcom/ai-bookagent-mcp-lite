@@ -163,7 +163,7 @@ export function buildBookDesign(
       colors: {
         primary: "#17324D",
         secondary: "#147D92",
-        accent: "#E76F51",
+        accent: "#F4A261",
         background: "#FFF9ED",
         surface: "#FFFFFF",
         text: "#263238"
