@@ -4,6 +4,7 @@ import { fileURLToPath } from "node:url";
 import { z } from "zod";
 import {
   bookContentSchema,
+  closingNoteCorrectionSchema,
   creatureSchema,
   projectedPageCount,
   type BookContent
@@ -338,6 +339,37 @@ export async function replaceCreatureContent(projectDir: string, creatureInput: 
     canva: { status: "not_checked" }
   });
   return { project: updated, affectedCreatureId: replacement.creatureId, report: validation.report };
+}
+
+export async function replaceClosingNote(projectDir: string, closingNoteInput: unknown) {
+  const project = await loadProject(projectDir);
+  if (!project.content) throw new Error("Book content must exist before replacing the closing note.");
+  const closingNote = closingNoteCorrectionSchema.parse(closingNoteInput);
+  const content = { ...project.content, closingNote };
+  const validation = validateBookContent(content, project.selection.current, project.request);
+  const blockingIssues = validation.report.issues.filter(
+    (issue) => issue.level === "error" && issue.path === "closingNote"
+  );
+  if (blockingIssues.length > 0) {
+    const encodingIssue = blockingIssues.find((issue) => issue.code === "content_encoding_mojibake");
+    if (encodingIssue) throw new Error("Replacement closing note contains encoding corruption.");
+    throw new Error(`Replacement closing note has blocking validation errors: ${blockingIssues.map((issue) => issue.message).join(" ")}`);
+  }
+  const updated = await persistMutation(projectDir, project, {
+    stage: "content_review_required",
+    content,
+    sourceRevision: project.sourceRevision + 1,
+    designPreview: undefined,
+    primaryOutput: { status: "not_ready" },
+    exportFailures: [],
+    canva: { status: "not_checked" }
+  });
+  return {
+    project: updated,
+    affectedField: "closingNote" as const,
+    report: validation.report,
+    nextAction: "Create and review a refreshed HTML book design before generating new outputs."
+  };
 }
 
 export async function generateDocuments(

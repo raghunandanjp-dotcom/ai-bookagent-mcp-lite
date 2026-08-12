@@ -14,6 +14,7 @@ import {
   getCanvaHandoff,
   initializeProject,
   reworkPrimaryOutput,
+  replaceClosingNote,
   replaceCreatureContent,
   selectCanvaDesign,
   reiterateAuthoringPrompt,
@@ -227,6 +228,136 @@ describe("persisted workflow bookkeeping", () => {
     expect(after).toMatchObject({ revision: before.revision, sourceRevision: before.sourceRevision });
     expect(after.content).toEqual(before.content);
     expect(afterBytes).toEqual(beforeBytes);
+  });
+
+  it("replaces only the closing note, advances revisions, and makes prior design and outputs stale without consuming allowances", async () => {
+    const originalContent = { ...content, closingNote: "Every creature helps its neighbors." };
+    await initializeProject(projectDir, { title: "Ocean Friends", theme: "ocean creatures", creatureCount: 1 });
+    await updateCreatureSelection(projectDir, [creature]);
+    await approveCreatureSelection(projectDir);
+    await acceptBookContent(projectDir, originalContent);
+    await seedIllustrations(projectDir);
+    const designed = await loadProject(projectDir);
+    await saveProject(projectDir, {
+      ...designed,
+      designPreview: {
+        relativePath: "previews/book-design.html",
+        sha256: "a".repeat(64),
+        bytes: 42,
+        createdAt: "2026-07-31T10:00:00.000Z",
+        designRevision: designed.design!.designRevision
+      }
+    });
+    await generateDocuments(projectDir, ["docx"]);
+    const before = await loadProject(projectDir);
+    expect(before.designPreview).toBeDefined();
+
+    const result = await replaceClosingNote(
+      projectDir,
+      "  Ocean creatures have many special ways of living, moving, and sharing their habitats.  "
+    );
+    const after = await loadProject(projectDir);
+    const replacement = "Ocean creatures have many special ways of living, moving, and sharing their habitats.";
+
+    expect(result).toMatchObject({ affectedField: "closingNote", project: { revision: before.revision + 1, sourceRevision: before.sourceRevision + 1 } });
+    expect(after).toEqual({
+      ...before,
+      revision: before.revision + 1,
+      sourceRevision: before.sourceRevision + 1,
+      updatedAt: after.updatedAt,
+      stage: "content_review_required",
+      content: { ...before.content!, closingNote: replacement },
+      designPreview: undefined,
+      primaryOutput: { status: "not_ready" },
+      exportFailures: [],
+      canva: { status: "not_checked" }
+    });
+    expect(after.contentGeneration).toEqual(before.contentGeneration);
+    expect(after.reworksUsed).toBe(before.reworksUsed);
+    expect(after.design).toEqual(before.design);
+    expect(after.design!.sourceRevision).toBe(before.sourceRevision);
+    expect(after.design!.sourceRevision).not.toBe(after.sourceRevision);
+    expect(after.exports).toEqual(before.exports);
+    expect(after.exports.every((record) => record.sourceRevision !== after.sourceRevision)).toBe(true);
+  });
+
+  it.each([
+    ["non-string", { text: "Not a string" }],
+    ["empty", "   "],
+    ["oversized", "x".repeat(241)],
+    ["mojibake", "Ocean creatures\u00C3\u00A2\u00E2\u201A\u00AC\u00E2\u201E\u00A2 habitats are shared."]
+  ])("rejects %s closing-note correction with byte-identical project state", async (_case, replacement) => {
+    await initializeProject(projectDir, { title: "Ocean Friends", theme: "ocean creatures", creatureCount: 1 });
+    await updateCreatureSelection(projectDir, [creature]);
+    await approveCreatureSelection(projectDir);
+    await acceptBookContent(projectDir, { ...content, closingNote: "Original closing note." });
+    const beforeBytes = await readFile(path.join(projectDir, "book-project.json"));
+    const before = await loadProject(projectDir);
+
+    await expect(replaceClosingNote(projectDir, replacement)).rejects.toThrow();
+
+    expect(await readFile(path.join(projectDir, "book-project.json"))).toEqual(beforeBytes);
+    expect(await loadProject(projectDir)).toEqual(before);
+  });
+
+  it("rejects a wrong-script closing note for a Kannada project with byte-identical state and counters", async () => {
+    const kannadaSection = (text: string) => ({
+      text,
+      language: "kn" as const,
+      reviewStatus: "needs_review" as const
+    });
+    const kannadaContent = {
+      ...content,
+      title: "ಸಮುದ್ರ ಸ್ನೇಹಿತರು",
+      language: "kn" as const,
+      closingNote: "ಸಮುದ್ರ ಜೀವಿಗಳೊಂದಿಗೆ ಹಂಚಿಕೊಳ್ಳುತ್ತಾ ಕಲಿಯಿರಿ.",
+      creatures: [{
+        ...content.creatures[0]!,
+        displayName: "ಆಕ್ಟೋಪಸ್",
+        poem: {
+          ...kannadaSection("ಎಂಟು ಕೈಗಳು ನೀರಿನಲ್ಲಿ ಅಲೆಯುತ್ತವೆ\nಬಣ್ಣದ ಹವಳದ ಬಳಿ ಕುಣಿಯುತ್ತವೆ\nಸಮುದ್ರದ ಅಲೆಯಲ್ಲಿ ಮೆಲ್ಲಗೆ ಸಾಗುತ್ತವೆ\n\nಮೀನುಗಳ ಜೊತೆಗೆ ಸಂತಸ ಹಂಚುತ್ತವೆ\nನೀಲಿ ನೀರಿನಲ್ಲಿ ಚೆನ್ನಾಗಿ ಈಜುತ್ತವೆ\nಆಕ್ಟೋಪಸ್ ಎಲ್ಲರಿಗೂ ಕೈ ಬೀಸುತ್ತದೆ"),
+          title: "ಅಲೆಯುವ ಕೈಗಳು",
+          structureVersion: "1.0" as const,
+          rhymeScheme: "AAB" as const
+        },
+        funFact: kannadaSection("ಆಕ್ಟೋಪಸ್‌ಗೆ ಮೂರು ಹೃದಯಗಳಿವೆ."),
+        activity: kannadaSection("ಆಕ್ಟೋಪಸ್‌ನ ಎಂಟು ಕೈಗಳನ್ನು ಚಿತ್ರಿಸಿ ಎಣಿಸಿ.")
+      }]
+    };
+    await initializeProject(projectDir, {
+      title: "ಸಮುದ್ರ ಸ್ನೇಹಿತರು",
+      theme: "ಸಮುದ್ರ ಜೀವಿಗಳು",
+      ageBand: "6-8",
+      language: "kn",
+      creatureCount: 1
+    });
+    await updateCreatureSelection(projectDir, [creature]);
+    await approveCreatureSelection(projectDir);
+    const accepted = await acceptBookContent(projectDir, kannadaContent);
+    expect(accepted.report.valid).toBe(true);
+    const before = await loadProject(projectDir);
+    const beforeBytes = await readFile(path.join(projectDir, "book-project.json"));
+
+    await expect(replaceClosingNote(projectDir, "Keep sharing the ocean.")).rejects.toThrow(/Kannada content must contain Kannada script/i);
+
+    const after = await loadProject(projectDir);
+    expect(await readFile(path.join(projectDir, "book-project.json"))).toEqual(beforeBytes);
+    expect(after).toEqual(before);
+    expect(after).toMatchObject({
+      revision: before.revision,
+      sourceRevision: before.sourceRevision,
+      reworksUsed: before.reworksUsed,
+      contentGeneration: before.contentGeneration
+    });
+  });
+
+  it("requires generated content before closing-note correction and preserves project bytes on failure", async () => {
+    await initializeProject(projectDir, { title: "Ocean Friends", theme: "ocean creatures", creatureCount: 1 });
+    const beforeBytes = await readFile(path.join(projectDir, "book-project.json"));
+
+    await expect(replaceClosingNote(projectDir, "A valid closing note.")).rejects.toThrow(/content must exist/i);
+
+    expect(await readFile(path.join(projectDir, "book-project.json"))).toEqual(beforeBytes);
   });
 
   it("does not persist repeated identical creature-selection submissions", async () => {

@@ -125,6 +125,11 @@ export const creatureContentSchema = z.object({
   altText: z.string().min(1).max(LIMITS.maxAltTextCharacters)
 });
 
+export const closingNoteCorrectionSchema = z.string()
+  .trim()
+  .min(1)
+  .max(LIMITS.maxClosingNoteCharacters);
+
 export const illustrationMimeTypeSchema = z.enum(["image/png", "image/jpeg"]);
 export const illustrationRoleSchema = z.enum(["cover", "creature"]);
 export const illustrationAssetSchema = z.object({
