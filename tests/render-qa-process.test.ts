@@ -62,10 +62,14 @@ describe("DOCX render QA process controls", () => {
   });
 
   it("uses a unique profile URI in the LibreOffice command", () => {
-    const args = libreOfficeArguments("C:\\Temp\\profile with spaces", "C:\\Temp\\out", "C:\\Temp\\book.docx");
+    const args = libreOfficeArguments("C:\\Temp\\profile with spaces", "C:\\Temp\\out", "C:\\Temp\\book.docx", "win32");
     const expectedUri = ["file:", "", "", "C:", "Temp", "profile%20with%20spaces"].join("/");
     expect(args[0]).toBe(`-env:UserInstallation=${expectedUri}`);
     expect(args).toEqual(expect.arrayContaining(["--headless", "--norestore", "--convert-to", "pdf"]));
+
+    const posixArgs = libreOfficeArguments("/tmp/profile with spaces", "/tmp/out", "/tmp/book.docx", "linux");
+    const expectedPosixUri = ["file:", "", "", "tmp", "profile%20with%20spaces"].join("/");
+    expect(posixArgs[0]).toBe(`-env:UserInstallation=${expectedPosixUri}`);
   });
 
   it("times out, reports captured diagnostics, and cleans the process tree", async () => {

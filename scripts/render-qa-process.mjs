@@ -3,7 +3,6 @@ import { existsSync } from "node:fs";
 import { mkdir, mkdtemp, rm, stat } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { pathToFileURL } from "node:url";
 
 export const DEFAULT_RENDER_TIMEOUT_MS = 120_000;
 
@@ -27,10 +26,10 @@ function pathLookup(command, platform, probe) {
 
 function directWindowsExecutable(command, located, pathExists) {
   if (!/\.(?:bat|cmd)$/iu.test(located)) return located;
-  const directory = path.dirname(located);
+  const directory = path.win32.dirname(located);
   const candidates = [
-    path.resolve(directory, "..", "..", "native", "poppler", "Library", "bin", `${command}.exe`),
-    path.resolve(directory, "..", "Library", "bin", `${command}.exe`)
+    path.win32.resolve(directory, "..", "..", "native", "poppler", "Library", "bin", `${command}.exe`),
+    path.win32.resolve(directory, "..", "Library", "bin", `${command}.exe`)
   ];
   return candidates.find(pathExists) ?? located;
 }
@@ -38,11 +37,12 @@ function directWindowsExecutable(command, located, pathExists) {
 export function discoverExecutable(command, environmentVariable, options = {}) {
   const env = options.env ?? process.env;
   const platform = options.platform ?? process.platform;
+  const platformPath = platform === "win32" ? path.win32 : path.posix;
   const probe = options.probe ?? spawnSync;
   const pathExists = options.pathExists ?? existsSync;
   const override = env[environmentVariable]?.trim();
   if (override) {
-    const resolved = path.isAbsolute(override) ? override : pathLookup(override, platform, probe);
+    const resolved = platformPath.isAbsolute(override) ? override : pathLookup(override, platform, probe);
     if (resolved && pathExists(resolved)) {
       return platform === "win32" ? directWindowsExecutable(command, resolved, pathExists) : resolved;
     }
@@ -58,7 +58,7 @@ export function discoverExecutable(command, environmentVariable, options = {}) {
     const roots = [env.ProgramFiles, env["ProgramFiles(x86)"], env.LOCALAPPDATA].filter(Boolean);
     for (const root of roots) {
       for (const name of ["soffice.com", "soffice.exe"]) {
-        const candidate = path.join(root, "LibreOffice", "program", name);
+        const candidate = platformPath.join(root, "LibreOffice", "program", name);
         if (pathExists(candidate)) return candidate;
       }
     }
@@ -74,6 +74,21 @@ export function renderTimeoutMs(env = process.env) {
     throw new Error("AI_BOOKAGENT_RENDER_TIMEOUT_MS must be an integer from 1000 through 600000.");
   }
   return value;
+}
+
+function fileUrlForPlatform(filePath, platform) {
+  const platformPath = platform === "win32" ? path.win32 : path.posix;
+  const normalized = platformPath.resolve(filePath).replaceAll("\\", "/");
+  const fileUrlPrefix = ["file:", "", ""].join("/");
+  if (platform === "win32" && normalized.startsWith("//")) {
+    const [host, ...segments] = normalized.slice(2).split("/");
+    const url = new URL(`${fileUrlPrefix}${host}/`);
+    url.pathname = `/${segments.join("/")}`;
+    return url.href;
+  }
+  const url = new URL(`${fileUrlPrefix}/`);
+  url.pathname = platform === "win32" ? `/${normalized}` : normalized;
+  return url.href;
 }
 
 async function terminateProcessTree(child, platform, cleanupProbe = spawnSync) {
@@ -161,9 +176,10 @@ export async function runBounded(command, args, options = {}) {
   });
 }
 
-export function libreOfficeArguments(profileDirectory, outputDirectory, inputPath) {
+export function libreOfficeArguments(profileDirectory, outputDirectory, inputPath, platform = process.platform) {
+  const profileUrl = fileUrlForPlatform(profileDirectory, platform);
   return [
-    `-env:UserInstallation=${pathToFileURL(profileDirectory).href}`,
+    `-env:UserInstallation=${profileUrl}`,
     "--invisible",
     "--headless",
     "--nologo",
