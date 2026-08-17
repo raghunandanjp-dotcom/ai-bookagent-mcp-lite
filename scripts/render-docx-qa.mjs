@@ -15,11 +15,12 @@ const fixture = (count) => ({
   schemaVersion: "1.1", title: `Wonderful Creatures - ${count}`, language: "en", selectedAgeBand: "6-8", effectiveAgeBand: "6-8", generationAttempt: 0,
   creatures: Array.from({ length: count }, (_, index) => ({
     creatureId: `creature-${index + 1}`, displayName: `Creature ${index + 1}`,
-    poem: { text: "Dancing softly in the light\nEvery step is small and bright\nResting by a tree\n\nMorning brings a golden glow\nOff into the world we go\nHappy, wild, and free", language: "en", reviewStatus: "human_reviewed", title: `Creature ${index + 1}'s Song`, structureVersion: "1.0", rhymeScheme: "AAB" },
+    poem: { text: "Dancing softly in the light\nEvery step is small and bright\nResting by a tree\n\nMorning brings a golden glow\nOff into the world we go\nHappy, wild, and free", language: "en", reviewStatus: "needs_review", title: `Creature ${index + 1}'s Song`, structureVersion: "1.0", rhymeScheme: "AAB" },
     funFact: { text: `Creature ${index + 1} has a useful fact to discover.`, language: "en", reviewStatus: "source_supported" },
     activity: { text: `Draw creature ${index + 1} safely in its habitat.`, language: "en", reviewStatus: "human_reviewed" },
     illustrationBrief: `A friendly view of creature ${index + 1} in its habitat.`, altText: `Creature ${index + 1} shown clearly in its habitat.`
-  }))
+  })),
+  closingNote: "Keep wondering about every creature you meet."
 });
 
 const { exportDocx } = await import(pathToFileURL(path.join(root, "dist", "exporters.js")).href);
@@ -41,10 +42,10 @@ for (const count of [1, 5, 11, 20]) {
     const pdfPath = await convertOfficeToPdf(docxPath, directory, soffice, timeoutMs);
     await rasterizePdf(pdfPath, path.join(directory, "page"), pdftoppm, timeoutMs);
   }
-  const expectedLogicalPages = 1 + count * 3;
+  const expectedLogicalPages = 2 + count * 3;
   const renderedPages = canRender ? (await readdir(directory)).filter((name) => /^page-\d+\.png$/u.test(name)).length : 0;
   if (canRender && renderedPages !== expectedLogicalPages) {
-    throw new Error(`Expected ${expectedLogicalPages} rendered pages for ${count} creatures, found ${renderedPages}.`);
+    throw new Error(`Expected ${expectedLogicalPages} rendered DOCX pages for ${count} creatures, found ${renderedPages}.`);
   }
   manifest.push({ creatures: count, expectedLogicalPages, docx: path.relative(root, docxPath), renderedPages, rendered: canRender });
 }

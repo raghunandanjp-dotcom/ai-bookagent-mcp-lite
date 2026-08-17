@@ -50,7 +50,7 @@ Vitest contains **93 tests across 13 suites**. `scripts/smoke-core.mjs` adds one
 
 | Harness | Boundary artifacts | Current expected sequence | Rendering dependency |
 | --- | --- | --- | --- |
-| `npm run qa:docx:render` | DOCX at 1/5/11/20 creatures | 4/16/34/61 logical pages; fixture has no closing note | LibreOffice + Poppler |
+| `npm run qa:docx:render` | DOCX at 1/5/11/20 creatures | 5/17/35/62 physical pages; fixture has a closing note and count mismatch is blocking | LibreOffice + Poppler |
 | `npm run qa:pptx:render` | PPTX at 1/5/11/20 creatures | 5/17/35/62 slides; fixture has a closing note | LibreOffice + Poppler |
 | `npm run qa:pdf:render` | PDF at 1/5/11/20 creatures | 5/17/35/62 pages; fixture has a closing note | Poppler |
 

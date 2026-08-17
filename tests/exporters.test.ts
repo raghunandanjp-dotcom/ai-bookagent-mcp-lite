@@ -113,11 +113,16 @@ describe("DOCX exporter", () => {
     ["6-8", 40, 500],
     ["9-11", 36, 432],
     ["12-14", 32, 368]
-  ] as const)("applies %s poem typography", async (ageBand, poemHalfPoints, lineTwips) => {
+  ] as const)("applies %s poem typography with exact line heights", async (ageBand, poemHalfPoints, lineTwips) => {
     const aged = { ...content, selectedAgeBand: ageBand, effectiveAgeBand: ageBand };
     const result = await documentParts(aged);
-    expect(result.document).toContain(`<w:spacing w:after="0" w:line="${lineTwips}"`);
+    expect(result.document).toContain(`<w:spacing w:after="0" w:line="${lineTwips}" w:lineRule="exact"`);
     expect(result.document).toContain(`<w:sz w:val="${poemHalfPoints}"/>`);
+  });
+
+  it("uses exact body line heights so compatible renderers do not reinterpret twips as multiple spacing", async () => {
+    const result = await documentParts();
+    expect(result.document).toContain('<w:spacing w:after="180" w:line="450" w:lineRule="exact"/>');
   });
 
   it.each([5, 11, 20])("keeps deterministic page boundaries for %i creatures", async (creatureCount) => {
