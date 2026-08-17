@@ -31,6 +31,8 @@ Not supported: unattended factual publication, arbitrary SVG/HTML, cloud storage
 - Claude Desktop or another stdio-capable MCP host
 - Optional for visual QA: LibreOffice and Poppler
 
+The DOCX visual-QA harness discovers LibreOffice on `PATH` and in standard Windows install locations. Set `AI_BOOKAGENT_SOFFICE` or `AI_BOOKAGENT_PDFTOPPM` to an explicit executable when using a portable/nonstandard install. Render commands use an isolated LibreOffice profile and a 120-second per-command timeout; set `AI_BOOKAGENT_RENDER_TIMEOUT_MS` to an integer from 1000 through 600000 when a slower machine needs a different bound.
+
 ## Install
 
 ### From this repository (available now)
