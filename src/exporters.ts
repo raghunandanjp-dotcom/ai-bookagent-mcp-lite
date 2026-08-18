@@ -8,9 +8,10 @@ import {
   Footer,
   HeadingLevel,
   ImageRun,
-  PageNumber,
+  LineRuleType,
   Packer,
   Paragraph,
+  SimpleField,
   TextRun,
   type IRunOptions
 } from "docx";
@@ -137,7 +138,11 @@ function poemParagraphs(content: BookContent, text: string): Paragraph[] {
   const typography = DOCX_TYPOGRAPHY_BY_AGE[content.effectiveAgeBand];
   return normalizePoemText(text).split("\n").map((line) => new Paragraph({
     keepLines: true,
-    spacing: { after: line ? 0 : Math.round(typography.poemPoints * 10), line: Math.round(typography.poemPoints * typography.lineSpacing * 20) },
+    spacing: {
+      after: line ? 0 : Math.round(typography.poemPoints * 10),
+      line: Math.round(typography.poemPoints * typography.lineSpacing * 20),
+      lineRule: LineRuleType.EXACT
+    },
     children: line ? [run(line, content, { size: typography.poemPoints * 2, color: COLORS.ink })] : []
   }));
 }
@@ -145,7 +150,11 @@ function poemParagraphs(content: BookContent, text: string): Paragraph[] {
 function bodyParagraph(content: BookContent, text: string): Paragraph {
   const typography = DOCX_TYPOGRAPHY_BY_AGE[content.effectiveAgeBand];
   return new Paragraph({
-    spacing: { after: 180, line: Math.round(typography.bodyPoints * typography.lineSpacing * 20) },
+    spacing: {
+      after: 180,
+      line: Math.round(typography.bodyPoints * typography.lineSpacing * 20),
+      lineRule: LineRuleType.EXACT
+    },
     children: [run(text, content, { size: typography.bodyPoints * 2, color: COLORS.ink })]
   });
 }
@@ -239,7 +248,11 @@ export async function exportDocx(content: BookContent, exportDir: string, illust
         default: new Footer({
           children: [new Paragraph({
             alignment: AlignmentType.CENTER,
-            children: [new TextRun({ children: ["Page ", PageNumber.CURRENT], size: 18, color: "68737D", font: "Arial" })]
+            run: { size: 18, color: "68737D", font: "Arial" },
+            children: [
+              new TextRun({ text: "Page ", size: 18, color: "68737D", font: "Arial" }),
+              new SimpleField("PAGE", "1")
+            ]
           })]
         })
       },

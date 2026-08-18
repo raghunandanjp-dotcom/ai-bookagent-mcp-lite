@@ -58,7 +58,15 @@ async function documentParts(book = content) {
   const data = await readFile(path.join(directory, record.relativePath));
   const zip = await JSZip.loadAsync(data);
   const part = async (name: string) => zip.file(name)?.async("string") ?? "";
-  return { record, data, zip, document: await part("word/document.xml"), styles: await part("word/styles.xml"), core: await part("docProps/core.xml") };
+  return {
+    record,
+    data,
+    zip,
+    document: await part("word/document.xml"),
+    footer: await part("word/footer1.xml"),
+    styles: await part("word/styles.xml"),
+    core: await part("docProps/core.xml")
+  };
 }
 
 describe("DOCX exporter", () => {
@@ -108,16 +116,31 @@ describe("DOCX exporter", () => {
     expect(result.document).toContain("ಸಾಗರ ಸ್ನೇಹಿತರು");
   });
 
+  it("keeps the complete page label outside a cached PAGE field for odd and even two-digit pages", async () => {
+    const result = await documentParts();
+
+    expect(result.footer).toContain('<w:r><w:rPr>');
+    expect(result.footer).toContain('<w:t xml:space="preserve">Page </w:t></w:r><w:fldSimple w:instr="PAGE">');
+    expect(result.footer).toContain('<w:fldSimple w:instr="PAGE"><w:r><w:t xml:space="preserve">1</w:t></w:r></w:fldSimple>');
+    expect(result.footer).not.toContain('<w:fldChar w:fldCharType="begin"/>');
+    expect(result.footer).not.toContain('<w:instrText xml:space="preserve">PAGE</w:instrText>');
+  });
+
   it.each([
     ["3-5", 44, 572],
     ["6-8", 40, 500],
     ["9-11", 36, 432],
     ["12-14", 32, 368]
-  ] as const)("applies %s poem typography", async (ageBand, poemHalfPoints, lineTwips) => {
+  ] as const)("applies %s poem typography with exact line heights", async (ageBand, poemHalfPoints, lineTwips) => {
     const aged = { ...content, selectedAgeBand: ageBand, effectiveAgeBand: ageBand };
     const result = await documentParts(aged);
-    expect(result.document).toContain(`<w:spacing w:after="0" w:line="${lineTwips}"`);
+    expect(result.document).toContain(`<w:spacing w:after="0" w:line="${lineTwips}" w:lineRule="exact"`);
     expect(result.document).toContain(`<w:sz w:val="${poemHalfPoints}"/>`);
+  });
+
+  it("uses exact body line heights so compatible renderers do not reinterpret twips as multiple spacing", async () => {
+    const result = await documentParts();
+    expect(result.document).toContain('<w:spacing w:after="180" w:line="450" w:lineRule="exact"/>');
   });
 
   it.each([5, 11, 20])("keeps deterministic page boundaries for %i creatures", async (creatureCount) => {
