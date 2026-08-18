@@ -9,9 +9,9 @@ import {
   HeadingLevel,
   ImageRun,
   LineRuleType,
-  PageNumber,
   Packer,
   Paragraph,
+  SimpleField,
   TextRun,
   type IRunOptions
 } from "docx";
@@ -248,7 +248,11 @@ export async function exportDocx(content: BookContent, exportDir: string, illust
         default: new Footer({
           children: [new Paragraph({
             alignment: AlignmentType.CENTER,
-            children: [new TextRun({ children: ["Page ", PageNumber.CURRENT], size: 18, color: "68737D", font: "Arial" })]
+            run: { size: 18, color: "68737D", font: "Arial" },
+            children: [
+              new TextRun({ text: "Page ", size: 18, color: "68737D", font: "Arial" }),
+              new SimpleField("PAGE", "1")
+            ]
           })]
         })
       },

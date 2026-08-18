@@ -58,7 +58,15 @@ async function documentParts(book = content) {
   const data = await readFile(path.join(directory, record.relativePath));
   const zip = await JSZip.loadAsync(data);
   const part = async (name: string) => zip.file(name)?.async("string") ?? "";
-  return { record, data, zip, document: await part("word/document.xml"), styles: await part("word/styles.xml"), core: await part("docProps/core.xml") };
+  return {
+    record,
+    data,
+    zip,
+    document: await part("word/document.xml"),
+    footer: await part("word/footer1.xml"),
+    styles: await part("word/styles.xml"),
+    core: await part("docProps/core.xml")
+  };
 }
 
 describe("DOCX exporter", () => {
@@ -106,6 +114,16 @@ describe("DOCX exporter", () => {
     expect(result.styles).toContain("Noto Sans Kannada");
     expect(result.styles).toContain('<w:lang w:val="kn-IN"/>');
     expect(result.document).toContain("ಸಾಗರ ಸ್ನೇಹಿತರು");
+  });
+
+  it("keeps the complete page label outside a cached PAGE field for odd and even two-digit pages", async () => {
+    const result = await documentParts();
+
+    expect(result.footer).toContain('<w:r><w:rPr>');
+    expect(result.footer).toContain('<w:t xml:space="preserve">Page </w:t></w:r><w:fldSimple w:instr="PAGE">');
+    expect(result.footer).toContain('<w:fldSimple w:instr="PAGE"><w:r><w:t xml:space="preserve">1</w:t></w:r></w:fldSimple>');
+    expect(result.footer).not.toContain('<w:fldChar w:fldCharType="begin"/>');
+    expect(result.footer).not.toContain('<w:instrText xml:space="preserve">PAGE</w:instrText>');
   });
 
   it.each([
