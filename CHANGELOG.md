@@ -2,9 +2,9 @@
 
 All notable changes are documented here. This project follows [Semantic Versioning](https://semver.org/); release dates and links are added only after the corresponding release exists.
 
-## [0.1.0-rc.1] - Unreleased
+## [0.1.0]
 
-Planned first public release candidate.
+Initial 0.1.0 release notes.
 
 ### Added
 
@@ -23,10 +23,8 @@ Planned first public release candidate.
 - Untrusted-input validation for content, SVG, raster assets, connector results, and returned Canva URLs
 - No built-in OAuth credential storage, paid model API call, or automatic cloud upload
 
-### Known release gates
+### Known limitations
 
-- DOCX and PPTX visual rendering awaits LibreOffice-backed RC evidence.
-- English current-baseline Claude content/design/export review is pending; the visible `cld-eng-04` run stops at `content_review_required`.
-- Kannada requires fluent human language and rendered-glyph approval.
-- Canva requires one authorized, consented end-to-end run and matching edit-link review.
-- npm publication, GitHub public visibility, tag, and GitHub release do not yet exist and require explicit maintainer approval.
+- Experimental Kannada content requires fluent human language and rendered-glyph review.
+- Live Canva connector and handoff were intentionally skipped and remain unqualified.
+- npm publication is not part of the approved GitHub-only launch.
