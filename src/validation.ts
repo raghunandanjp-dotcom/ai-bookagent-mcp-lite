@@ -3,16 +3,23 @@ import {
   DOCX_LIMITS,
   DOCX_TYPOGRAPHY_BY_AGE,
   PPTX_AGE_PROFILES,
+  RHYME_SCHEME_LINE_COUNTS,
   bookContentSchema,
   projectedPageCount,
   type BookContent,
   type BookRequest,
   type Creature,
+  type HumanApprovedAlternativeRhymeScheme,
   type ValidationIssue,
   type ValidationReport
 } from "./domain.ts";
 import { analyzePoem, poemStructure } from "./poems.ts";
 import { analyzeKannadaScript } from "./language.ts";
+
+export interface ContentValidationOptions {
+  /** Explicit human attestations accepted only by incremental correction. */
+  humanApprovedRhymeSchemes?: Readonly<Record<string, HumanApprovedAlternativeRhymeScheme>>;
+}
 
 function words(value: string): number {
   return value.trim().split(/\s+/u).filter(Boolean).length;
@@ -39,7 +46,8 @@ export function validateBookContent(
   input: unknown,
   approvedCreatures: Creature[],
   request?: BookRequest,
-  expectedAttempt?: number
+  expectedAttempt?: number,
+  options?: ContentValidationOptions
 ): { content?: BookContent; report: ValidationReport } {
   const issues: ValidationIssue[] = [];
   const parsed = bookContentSchema.safeParse(input);
@@ -123,9 +131,14 @@ export function validateBookContent(
     const poem = analyzePoem(creature.poem.text);
     const structure = poemStructure(content.effectiveAgeBand);
     const poemPath = `creatures.${index}.poem`;
+    const approvedRhymeScheme = options?.humanApprovedRhymeSchemes?.[creature.creatureId];
+    const expectedRhymeScheme = approvedRhymeScheme ?? structure.rhymeScheme;
+    const expectedLinesPerStanza = approvedRhymeScheme
+      ? RHYME_SCHEME_LINE_COUNTS[approvedRhymeScheme]
+      : structure.linesPerStanza;
     if (poem.stanzas.length !== structure.stanzaCount) issues.push({ level: "error", code: "poem_stanza_count", path: `${poemPath}.text`, message: `Poem requires exactly ${structure.stanzaCount} stanzas.` });
-    if (poem.stanzas.some((stanza) => stanza.length !== structure.linesPerStanza)) issues.push({ level: "error", code: "poem_line_count", path: `${poemPath}.text`, message: `Every stanza requires exactly ${structure.linesPerStanza} lines.` });
-    if (creature.poem.rhymeScheme !== structure.rhymeScheme) issues.push({ level: "error", code: "poem_rhyme_scheme", path: `${poemPath}.rhymeScheme`, message: `Expected rhyme scheme ${structure.rhymeScheme}.` });
+    if (poem.stanzas.some((stanza) => stanza.length !== expectedLinesPerStanza)) issues.push({ level: "error", code: "poem_line_count", path: `${poemPath}.text`, message: `Every stanza requires exactly ${expectedLinesPerStanza} lines.` });
+    if (creature.poem.rhymeScheme !== expectedRhymeScheme) issues.push({ level: "error", code: "poem_rhyme_scheme", path: `${poemPath}.rhymeScheme`, message: `Expected rhyme scheme ${expectedRhymeScheme}.` });
     if (poem.normalizedStanzas.some((stanza, stanzaIndex, all) => stanzaIndex > 0 && stanza === all[stanzaIndex - 1])) issues.push({ level: "error", code: "duplicate_adjacent_stanza", path: `${poemPath}.text`, message: "A poem cannot repeat the same stanza immediately." });
     if (poem.wordCount < structure.minWords || poem.wordCount > structure.maxWords) issues.push({ level: "warning", code: "poem_word_count", path: `${poemPath}.text`, message: `Poem word count should be ${structure.minWords}-${structure.maxWords} for ages ${content.effectiveAgeBand}.` });
     if (creature.poem.language !== content.language) issues.push({ level: "error", code: "poem_language_mismatch", path: `${poemPath}.language`, message: "Poem language must match the book language." });

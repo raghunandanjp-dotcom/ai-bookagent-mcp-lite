@@ -56,6 +56,29 @@ describe("content validation", () => {
     expect(result.report.unexpectedCreatureIds).toEqual(["dolphin"]);
   });
 
+  it("keeps age-derived rhyme defaults unless an incremental correction supplies a human-approved alternative", () => {
+    const input = {
+      schemaVersion: "1.1" as const, selectedAgeBand: "6-8" as const, effectiveAgeBand: "6-8" as const, generationAttempt: 0,
+      title: "Ocean Friends", language: "en" as const,
+      creatures: [{
+        creatureId: "octopus", displayName: "Octopus",
+        poem: {
+          ...section("Eight arms wave beneath the sea\nCoral gardens glow with glee\nOctopus swims happily\n\nWaving to the fish below\nPast the rocks it likes to go\nFriends all cheer with joyful glee"),
+          title: "Waving Arms", structureVersion: "1.0" as const, rhymeScheme: "ABA" as const
+        },
+        funFact: section("An octopus has three hearts."), activity: section("Draw eight arms and count them."),
+        illustrationBrief: "A friendly octopus underwater.", altText: "A smiling octopus with eight visible arms."
+      }]
+    };
+
+    expect(validateBookContent(input, approved).report.issues).toEqual(expect.arrayContaining([
+      expect.objectContaining({ code: "poem_rhyme_scheme", path: "creatures.0.poem.rhymeScheme" })
+    ]));
+    expect(validateBookContent(input, approved, undefined, undefined, {
+      humanApprovedRhymeSchemes: { octopus: "ABA" }
+    }).report.valid).toBe(true);
+  });
+
   it("counts an optional closing page", () => {
     const input = {
       schemaVersion: "1.1", selectedAgeBand: "3-5", effectiveAgeBand: "3-5", generationAttempt: 0,

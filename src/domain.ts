@@ -34,7 +34,21 @@ export const PPTX_AGE_PROFILES = {
 export const languageSchema = z.enum(["en", "kn"]);
 export const ageBandSchema = z.enum(["3-5", "6-8", "9-11", "12-14"]);
 export type AgeBand = z.infer<typeof ageBandSchema>;
-export const rhymeSchemeSchema = z.enum(["AA", "AAB", "AABB"]);
+export const rhymeSchemeSchema = z.enum(["AA", "AAB", "ABA", "ABAB", "AABB"]);
+export type RhymeScheme = z.infer<typeof rhymeSchemeSchema>;
+
+// Alternative schemes are accepted only with an explicit human attestation on
+// the single-creature correction path. Initial generation keeps age defaults.
+export const humanApprovedAlternativeRhymeSchemeSchema = z.enum(["ABA", "ABAB", "AABB"]);
+export type HumanApprovedAlternativeRhymeScheme = z.infer<typeof humanApprovedAlternativeRhymeSchemeSchema>;
+
+export const RHYME_SCHEME_LINE_COUNTS: Record<RhymeScheme, number> = {
+  AA: 2,
+  AAB: 3,
+  ABA: 3,
+  ABAB: 4,
+  AABB: 4
+};
 
 export const POEM_STRUCTURE_BY_AGE = {
   "3-5": { stanzaCount: 2, linesPerStanza: 2, rhymeScheme: "AA", minWords: 8, maxWords: 40 },

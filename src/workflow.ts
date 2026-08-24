@@ -6,6 +6,7 @@ import {
   bookContentSchema,
   closingNoteCorrectionSchema,
   creatureSchema,
+  humanApprovedAlternativeRhymeSchemeSchema,
   projectedPageCount,
   type BookContent
 } from "./domain.ts";
@@ -20,6 +21,7 @@ import {
 import { buildBookDesign, illustrationSetDigest, renderBookDesignHtml } from "./design.ts";
 import { importCodeNativeIllustrationSet } from "./svg-illustrations.ts";
 import { prepareAuthoringPrompts } from "./prompts.ts";
+import { poemStructure } from "./poems.ts";
 import {
   createProject,
   fileDigest,
@@ -299,7 +301,11 @@ export async function acceptBookContent(projectDir: string, contentInput: unknow
   return { project: updated, report: result.report };
 }
 
-export async function replaceCreatureContent(projectDir: string, creatureInput: unknown) {
+export async function replaceCreatureContent(
+  projectDir: string,
+  creatureInput: unknown,
+  humanApprovedRhymeSchemeInput?: unknown
+) {
   const project = await loadProject(projectDir);
   if (!project.content) throw new Error("Book content must exist before replacing one creature.");
   const replacement = bookContentSchema.shape.creatures.element.parse(creatureInput);
@@ -310,6 +316,17 @@ export async function replaceCreatureContent(projectDir: string, creatureInput: 
     (creature) => creature.creatureId === replacement.creatureId
   );
   if (existingIndex < 0) throw new Error(`Creature ${replacement.creatureId} is missing from the current content.`);
+  const humanApprovedRhymeScheme = humanApprovedAlternativeRhymeSchemeSchema.optional().parse(humanApprovedRhymeSchemeInput);
+  const defaultRhymeScheme = poemStructure(project.content.effectiveAgeBand).rhymeScheme;
+  if (humanApprovedRhymeScheme === defaultRhymeScheme) {
+    throw new Error("A human-approved rhyme override must differ from the age-derived default.");
+  }
+  if (humanApprovedRhymeScheme && replacement.poem.rhymeScheme !== humanApprovedRhymeScheme) {
+    throw new Error("The human-approved rhyme scheme must match the replacement poem declaration.");
+  }
+  if (!humanApprovedRhymeScheme && replacement.poem.rhymeScheme !== defaultRhymeScheme) {
+    throw new Error("An alternative rhyme scheme requires explicit human approval.");
+  }
   const creatures = [...project.content.creatures];
   creatures[existingIndex] = replacement;
   const content = { ...project.content, creatures };
@@ -318,7 +335,8 @@ export async function replaceCreatureContent(projectDir: string, creatureInput: 
       .filter((issue) => issue.code === "content_encoding_mojibake")
       .map((issue) => issue.path)
   );
-  const validation = validateBookContent(content, project.selection.current, project.request);
+  const validation = validateBookContent(content, project.selection.current, project.request, undefined,
+    humanApprovedRhymeScheme ? { humanApprovedRhymeSchemes: { [replacement.creatureId]: humanApprovedRhymeScheme } } : undefined);
   const encodingIssues = validation.report.issues.filter((issue) => issue.code === "content_encoding_mojibake");
   const replacementPath = `creatures.${existingIndex}.`;
   const blockingEncodingIssues = encodingIssues.filter(

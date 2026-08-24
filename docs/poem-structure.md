@@ -13,6 +13,8 @@ Every poem has a title. One newline separates lines and one blank line separates
 
 The initial generation and first iteration use the selected age. The second and final iteration uses the next age band. Ages 12–14 remain 12–14 for both iterations. Poem iterations are independent from creature-list regenerations.
 
+An incremental `replace_creature_content` correction may carry an explicit human-approved alternative rhyme scheme. The smallest supported override set is `ABA` (three lines), `ABAB` (four), or `AABB` (four); the declaration must match the replacement poem, and it must differ from that age band's default. The override changes only the corrected poem's required lines per stanza. Its age-derived stanza count, word guidance, all overflow limits, language/script checks, and encoding checks remain unchanged. Initial generation, prompt iterations, full-content acceptance, and primary-output rework never receive this override and therefore retain the table defaults.
+
 English is the standard behavior. Kannada remains experimental, requires human review, and must be written as a native adaptation rather than a literal translation.
 
 DOCX, PPTX, PDF, and Canva consumers must preserve poem titles and intentional line and stanza breaks. Layout-specific decisions remain owned by their exporter workflows; Canva remains optional and consent-gated.
