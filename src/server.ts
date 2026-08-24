@@ -245,13 +245,14 @@ server.registerTool(
 server.registerTool(
   "replace_creature_content",
   {
-    description: "Replace and revalidate one creature while preserving all other generated content.",
+    description: "Replace and revalidate one creature while preserving all other generated content. An alternative rhyme scheme requires an explicit human-approved attestation and is available only for this incremental correction.",
     inputSchema: {
       projectDir: z.string().min(1),
-      creature: z.unknown()
+      creature: z.unknown(),
+      humanApprovedRhymeScheme: z.enum(["ABA", "ABAB", "AABB"]).optional().describe("Explicit human-approved alternative for this creature correction; it must equal creature.poem.rhymeScheme.")
     }
   },
-  async ({ projectDir, creature }) => text(await replaceCreatureContent(projectDir, creature))
+  async ({ projectDir, creature, humanApprovedRhymeScheme }) => text(await replaceCreatureContent(projectDir, creature, humanApprovedRhymeScheme))
 );
 
 server.registerTool(

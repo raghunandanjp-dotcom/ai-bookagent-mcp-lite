@@ -60,6 +60,10 @@ Accepts the reviewed current DOCX and unlocks PPTX, PDF, and Canva. Acceptance b
 
 Accepts validated replacement content, advances the source revision, makes old outputs stale, and creates a refreshed HTML design preview. A project permits at most two reworks. The refreshed design must be reviewed before DOCX is regenerated; rework never silently publishes against the previously approved layout.
 
+## `replace_creature_content`
+
+Replaces one selected creature without consuming authoring iterations or primary-output rework allowance. By default it applies the age-derived poem contract. For an incremental correction only, `humanApprovedRhymeScheme` is an explicit human attestation and may be `ABA`, `ABAB`, or `AABB`; it must exactly match `creature.poem.rhymeScheme` and differ from the age default. `ABA` requires three lines per stanza; `ABAB` and `AABB` require four. Age-derived stanza count and word guidance, all language, Kannada-script, encoding, and DOCX/PPTX overflow checks still apply. Unsupported, absent/mismatched, or default-equivalent override input is rejected before project persistence.
+
 ## `replace_closing_note`
 
 Accepts only a non-empty book-level `closingNote` string, trimmed and limited to 240 characters. It cannot carry or alter any other content field. A successful correction increments both the project revision and source revision once, preserves authoring-iteration and primary-output-rework allowances, makes the prior design and exports stale, clears the design preview and primary-output readiness, and requires a fresh design review before export. Invalid, oversized, wrong-script, or mojibake input is rejected without changing project bytes. A closing-note-only DOCX overflow is unreachable under this schema: exceeding the 120-word closing-note budget requires at least 241 characters, so the stricter character limit rejects that input first.

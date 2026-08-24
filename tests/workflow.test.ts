@@ -168,6 +168,51 @@ describe("persisted workflow bookkeeping", () => {
     expect(afterBytes).toEqual(beforeBytes);
   });
 
+  it.each([
+    ["ABA", "Eight arms wave beneath the sea\nCoral gardens glow with glee\nOctopus swims happily\n\nWaving to the fish below\nPast the rocks it likes to go\nFriends all cheer with joyful glee"],
+    ["ABAB", "Eight arms wave beneath the sea\nCoral gardens glow with glee\nOctopus twirls with delight\nMoonlit water shines so bright\n\nWaving to the fish below\nPast the rocks it likes to go\nFriends all cheer with delight\nStars above are shining bright"],
+    ["AABB", "Eight arms wave beneath the sea\nCoral gardens glow with glee\nOctopus twirls with delight\nMoonlit water shines so bright\n\nWaving to the fish below\nPast the rocks it likes to go\nFriends all cheer with delight\nStars above are shining bright"]
+  ] as const)("accepts explicit human-approved %s during incremental correction without consuming allowances", async (scheme, text) => {
+    await initializeProject(projectDir, { title: "Ocean Friends", theme: "ocean creatures", ageBand: "6-8", creatureCount: 1 });
+    await updateCreatureSelection(projectDir, [creature]);
+    await approveCreatureSelection(projectDir);
+    await acceptBookContent(projectDir, content);
+    const before = await loadProject(projectDir);
+    const replacement = structuredClone(content.creatures[0]!);
+    replacement.poem = { ...replacement.poem, rhymeScheme: scheme, text };
+
+    const result = await replaceCreatureContent(projectDir, replacement, scheme);
+    expect(result.report.valid).toBe(true);
+    expect(result.project).toMatchObject({
+      revision: before.revision + 1,
+      sourceRevision: before.sourceRevision + 1,
+      reworksUsed: before.reworksUsed,
+      contentGeneration: before.contentGeneration,
+      content: { selectedAgeBand: "6-8", effectiveAgeBand: "6-8" }
+    });
+  });
+
+  it("rejects unsupported or mismatched rhyme overrides before persistence", async () => {
+    await initializeProject(projectDir, { title: "Ocean Friends", theme: "ocean creatures", ageBand: "6-8", creatureCount: 1 });
+    await updateCreatureSelection(projectDir, [creature]);
+    await approveCreatureSelection(projectDir);
+    await acceptBookContent(projectDir, content);
+    const before = await loadProject(projectDir);
+    const beforeBytes = await readFile(path.join(projectDir, "book-project.json"));
+    const replacement = structuredClone(content.creatures[0]!);
+    replacement.poem = {
+      ...replacement.poem,
+      rhymeScheme: "ABA",
+      text: "Eight arms wave beneath the sea\nCoral gardens glow with glee\nOctopus swims happily\n\nWaving to the fish below\nPast the rocks it likes to go\nFriends all cheer with joyful glee"
+    };
+
+    await expect(replaceCreatureContent(projectDir, replacement, "ABBA")).rejects.toThrow();
+    await expect(replaceCreatureContent(projectDir, replacement, "ABAB")).rejects.toThrow(/must match/i);
+    await expect(replaceCreatureContent(projectDir, replacement)).rejects.toThrow(/requires explicit human approval/i);
+    expect(await readFile(path.join(projectDir, "book-project.json")).then(String)).toBe(beforeBytes.toString());
+    expect(await loadProject(projectDir)).toEqual(before);
+  });
+
   it("permits sequential correction of historical mojibake in multiple creatures", async () => {
     const seahorse = { ...creature, id: "seahorse", name: "Seahorse" };
     const historicalContent = structuredClone(content);
