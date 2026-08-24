@@ -39,8 +39,14 @@ const importIllustrationSchema = z.object({
 
 export type IllustrationImport = z.input<typeof importIllustrationSchema>;
 
+const PNG_SIGNATURE = Buffer.from("89504e470d0a1a0a", "hex");
+
 function inspectPng(data: Buffer) {
-  if (data.length < 24 || data.toString("hex", 0, 8) !== "89504e470d0a1a0a") return undefined;
+  // Keep format dispatch deliberately local and strict.  These bytes are later
+  // passed to document exporters, so unsupported formats must fail here rather
+  // than being delegated to a general-purpose image metadata parser.
+  if (data.length < 33 || !data.subarray(0, PNG_SIGNATURE.length).equals(PNG_SIGNATURE)) return undefined;
+  if (data.readUInt32BE(8) !== 13 || data.toString("ascii", 12, 16) !== "IHDR") return undefined;
   return { mimeType: "image/png" as const, extension: "png", width: data.readUInt32BE(16), height: data.readUInt32BE(20) };
 }
 
