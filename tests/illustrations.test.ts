@@ -1,4 +1,4 @@
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -17,6 +17,7 @@ import {
 import { loadProject, resolveInside, saveProject } from "../src/project.ts";
 import { fixtureIllustrations } from "./fixtures/illustrations.ts";
 import { pptxFixture } from "./fixtures/pptx-content.ts";
+import { inspectIllustration } from "../src/illustrations.ts";
 
 const temporaryDirectories: string[] = [];
 afterEach(async () => Promise.all(temporaryDirectories.splice(0).map((directory) => rm(directory, { recursive: true, force: true }))));
@@ -52,6 +53,12 @@ const metadata = {
   provenance: { generator: "Host image tool", model: "Illustration model" },
   license: { name: "Project publication license", attribution: "Created for this book" }
 };
+
+const unsupportedParserInputs = {
+  icns: Buffer.concat([Buffer.from("icns", "ascii"), Buffer.alloc(64, 0xff)]),
+  jxl: Buffer.concat([Buffer.from([0xff, 0x0a]), Buffer.alloc(66, 0xff)]),
+  heif: Buffer.concat([Buffer.from([0, 0, 0, 24]), Buffer.from("ftypheic", "ascii"), Buffer.alloc(60, 0xff)])
+} as const;
 
 describe("approved illustration workflow", () => {
   it("prepares one cover plus one creature prompt and blocks export until both imported assets are approved", async () => {
@@ -118,6 +125,24 @@ describe("approved illustration workflow", () => {
     await writeFile(resolveInside(projectDir, creatureAsset.relativePath), "corrupt image bytes");
     await expect(generateDocuments(projectDir, ["docx"])).rejects.toThrow(/missing, unreadable, or corrupt/i);
   });
+
+  it("rejects crafted ICNS, JXL, and HEIF before persistence or document-export parsing", async () => {
+    const { projectDir, source } = await preparedProject();
+    const beforeProject = await readFile(path.join(projectDir, "book-project.json"));
+    for (const [format, data] of Object.entries(unsupportedParserInputs)) {
+      expect(() => inspectIllustration(data)).toThrow(/valid PNG or JPEG/i);
+      const sourcePath = path.join(source.set.cover.absolutePath, "..", `${format}.bin`);
+      await writeFile(sourcePath, data);
+      await expect(importProjectIllustration(projectDir, {
+        ...metadata,
+        role: "cover",
+        sourcePath,
+        altText: `Crafted ${format} asset`
+      })).rejects.toThrow(/valid PNG or JPEG/i);
+      expect(await readFile(path.join(projectDir, "book-project.json"))).toEqual(beforeProject);
+    }
+    expect((await loadProject(projectDir)).illustrations).toEqual([]);
+  }, 2_000);
 
   it("reports missing, unexpected, and digest-mismatched approved illustration sets", async () => {
     const { projectDir, source } = await preparedProject();
