@@ -213,6 +213,81 @@ describe("persisted workflow bookkeeping", () => {
     expect(await loadProject(projectDir)).toEqual(before);
   });
 
+  it("retains an existing approval for text-only correction and removes it when the poem reverts to the default", async () => {
+    await initializeProject(projectDir, { title: "Ocean Friends", theme: "ocean creatures", ageBand: "6-8", creatureCount: 1 });
+    await updateCreatureSelection(projectDir, [creature]);
+    await approveCreatureSelection(projectDir);
+    await acceptBookContent(projectDir, content);
+    const alternative = structuredClone(content.creatures[0]!);
+    alternative.poem = {
+      ...alternative.poem,
+      rhymeScheme: "ABA",
+      text: "Eight arms wave beneath the sea\nCoral gardens glow with glee\nOctopus swims happily\n\nWaving to the fish below\nPast the rocks it likes to go\nFriends all cheer with joyful glee"
+    };
+    await replaceCreatureContent(projectDir, alternative, "ABA");
+    const textOnly = structuredClone(alternative);
+    textOnly.funFact.text = "An octopus has three hearts and enjoys a quiet coral home.";
+    expect((await replaceCreatureContent(projectDir, textOnly)).report.valid).toBe(true);
+    expect((await loadProject(projectDir)).rhymeOverrides).toEqual({ octopus: "ABA" });
+
+    const reverted = structuredClone(content.creatures[0]!);
+    expect((await replaceCreatureContent(projectDir, reverted)).report.valid).toBe(true);
+    expect((await loadProject(projectDir)).rhymeOverrides).toEqual({});
+  });
+
+  it("preserves three sequential Kannada ABA approvals through complete-book validation", async () => {
+    const creatures = [
+      { ...creature, id: "asian-elephant", name: "Asian elephant" },
+      { ...creature, id: "bengal-tiger", name: "Bengal tiger" },
+      { ...creature, id: "indian-peafowl", name: "Indian peafowl" }
+    ];
+    const knSection = (text: string) => ({ text, language: "kn" as const, reviewStatus: "needs_review" as const });
+    const defaultPoem = "ಕಾಡಿನ ಹಾದಿಯಲ್ಲಿ ಸಾಗುತ್ತದೆ\nಸ್ನೇಹಿತರ ಜೊತೆ ನಗುತ್ತದೆ\nಬೆಳಗಿನ ಗಾಳಿಯಲ್ಲಿ ಕುಣಿಯುತ್ತದೆ\n\nಹಸಿರು ಎಲೆಗಳ ಬಳಿ ನಿಲ್ಲುತ್ತದೆ\nಸಂತಸದ ಹಾಡನ್ನು ಹಾಡುತ್ತದೆ\nಮಕ್ಕಳ ಜೊತೆ ಆಟವಾಡುತ್ತದೆ";
+    const abaPoem = "ಕಾಡಿನ ಹಾದಿಯಲ್ಲಿ ಸಾಗುತ್ತದೆ\nಸ್ನೇಹಿತರ ಜೊತೆ ನಗುತ್ತದೆ\nಬೆಳಗಿನ ಗಾಳಿಯಲ್ಲಿ ಸಾಗುತ್ತದೆ\n\nಹಸಿರು ಎಲೆಗಳ ಬಳಿ ನಿಲ್ಲುತ್ತದೆ\nಸಂತಸದ ಹಾಡನ್ನು ಹಾಡುತ್ತದೆ\nಮಕ್ಕಳ ಜೊತೆ ನಿಲ್ಲುತ್ತದೆ";
+    const kannadaContent = {
+      schemaVersion: "1.1" as const,
+      title: "ಕಾಡಿನ ಸ್ನೇಹಿತರು",
+      language: "kn" as const,
+      selectedAgeBand: "6-8" as const,
+      effectiveAgeBand: "6-8" as const,
+      generationAttempt: 0,
+      creatures: creatures.map((item) => ({
+        creatureId: item.id,
+        displayName: "ಕಾಡಿನ ಸ್ನೇಹಿತ",
+        poem: { ...knSection(defaultPoem), title: "ಕಾಡಿನ ಹಾಡು", structureVersion: "1.0" as const, rhymeScheme: "AAB" as const },
+        funFact: knSection("ಇದು ಕಾಡಿನಲ್ಲಿ ವಾಸಿಸುವ ಪ್ರಾಣಿ."),
+        activity: knSection("ಪ್ರಾಣಿಯ ಚಿತ್ರ ಬಿಡಿಸಿ ಬಣ್ಣ ಹಚ್ಚಿ."),
+        illustrationBrief: "A friendly forest animal.",
+        altText: "A friendly forest animal in a green forest."
+      }))
+    };
+    await initializeProject(projectDir, { title: "ಕಾಡಿನ ಸ್ನೇಹಿತರು", theme: "forest animals", ageBand: "6-8", language: "kn", creatureCount: 3 });
+    await updateCreatureSelection(projectDir, creatures);
+    await approveCreatureSelection(projectDir);
+    expect((await acceptBookContent(projectDir, kannadaContent)).report.valid).toBe(true);
+
+    for (const item of kannadaContent.creatures) {
+      const replacement = structuredClone(item);
+      replacement.poem = { ...replacement.poem, rhymeScheme: "ABA", text: abaPoem };
+      const result = await replaceCreatureContent(projectDir, replacement, "ABA");
+      expect(result.report.issues.filter((issue) => issue.code === "poem_rhyme_scheme")).toEqual([]);
+    }
+
+    const finalProject = await loadProject(projectDir);
+    expect(finalProject).toMatchObject({
+      revision: 7,
+      sourceRevision: 6,
+      stage: "language_review_required",
+      reworksUsed: 0,
+      contentGeneration: { iterationsUsed: 0, currentAttempt: 0 },
+      rhymeOverrides: {
+        "asian-elephant": "ABA",
+        "bengal-tiger": "ABA",
+        "indian-peafowl": "ABA"
+      }
+    });
+  });
+
   it("permits sequential correction of historical mojibake in multiple creatures", async () => {
     const seahorse = { ...creature, id: "seahorse", name: "Seahorse" };
     const historicalContent = structuredClone(content);

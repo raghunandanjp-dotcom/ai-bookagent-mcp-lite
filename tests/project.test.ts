@@ -44,6 +44,7 @@ describe("portable project state", () => {
     delete legacy.reworksUsed;
     delete legacy.primaryOutput;
     delete legacy.contentGeneration;
+    delete legacy.rhymeOverrides;
     delete legacy.illustrations;
     legacy.schemaVersion = "1.0";
     const parsed = parseProject(legacy);
@@ -52,6 +53,7 @@ describe("portable project state", () => {
       reworksUsed: 0,
       primaryOutput: { status: "not_ready" },
       contentGeneration: { iterationsUsed: 0, currentAttempt: 0 },
+      rhymeOverrides: {},
       illustrations: []
     });
   });

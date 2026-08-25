@@ -34,10 +34,16 @@ import { approveSelection, beginSelection } from "./selection.ts";
 import { validateBookContent } from "./validation.ts";
 
 type ProjectMutation = Partial<
-  Pick<BookProject, "stage" | "selection" | "contentGeneration" | "content" | "illustrations" | "design" | "designPreview" | "exports" | "exportFailures" | "canva" | "sourceRevision" | "reworksUsed" | "primaryOutput">
+  Pick<BookProject, "stage" | "selection" | "contentGeneration" | "content" | "rhymeOverrides" | "illustrations" | "design" | "designPreview" | "exports" | "exportFailures" | "canva" | "sourceRevision" | "reworksUsed" | "primaryOutput">
 >;
 
 const MAX_REWORKS = 2;
+
+function validatePersistedContent(project: BookProject, content: unknown = project.content) {
+  return validateBookContent(content, project.selection.current, project.request, undefined, {
+    humanApprovedRhymeSchemes: project.rhymeOverrides
+  });
+}
 
 function currentExports(project: BookProject) {
   return project.exports.filter((record) => record.sourceRevision === project.sourceRevision &&
@@ -97,6 +103,7 @@ export async function updateCreatureSelection(
     selection,
     sourceRevision: project.sourceRevision + 1,
     content: undefined,
+    rhymeOverrides: {},
     illustrations: [],
     designPreview: undefined,
     primaryOutput: { status: "not_ready" },
@@ -126,7 +133,7 @@ export async function createPromptPackage(projectDir: string) {
 export async function createIllustrationPromptPackage(projectDir: string) {
   const project = await loadProject(projectDir);
   if (!project.content) throw new Error("Validated book content is required before preparing illustration prompts.");
-  const validation = validateBookContent(project.content, project.selection.current, project.request);
+  const validation = validatePersistedContent(project);
   if (!validation.report.valid) throw new Error("Book content has blocking validation errors.");
   const promptPackage = prepareIllustrationPrompts(project.request, project.content);
   const promptDir = resolveInside(projectDir, "prompts");
@@ -157,7 +164,7 @@ export async function importProjectIllustration(projectDir: string, input: unkno
 export async function importProjectCodeNativeIllustrationSet(projectDir: string, input: unknown): Promise<BookProject> {
   const project = await loadProject(projectDir);
   if (!project.content) throw new Error("Validated book content is required before importing illustrations.");
-  const validation = validateBookContent(project.content, project.selection.current, project.request);
+  const validation = validatePersistedContent(project);
   if (!validation.report.valid) throw new Error("Book content has blocking validation errors.");
   const illustrations = await importCodeNativeIllustrationSet(projectDir, project.content, input);
   return persistMutation(projectDir, project, {
@@ -292,6 +299,7 @@ export async function acceptBookContent(projectDir: string, contentInput: unknow
   const updated = await persistMutation(projectDir, project, {
     stage,
     content: result.content,
+    rhymeOverrides: {},
     sourceRevision: project.sourceRevision + 1,
     designPreview: undefined,
     primaryOutput: { status: "not_ready" },
@@ -324,19 +332,28 @@ export async function replaceCreatureContent(
   if (humanApprovedRhymeScheme && replacement.poem.rhymeScheme !== humanApprovedRhymeScheme) {
     throw new Error("The human-approved rhyme scheme must match the replacement poem declaration.");
   }
-  if (!humanApprovedRhymeScheme && replacement.poem.rhymeScheme !== defaultRhymeScheme) {
+  const existingRhymeOverride = project.rhymeOverrides[replacement.creatureId];
+  if (!humanApprovedRhymeScheme && replacement.poem.rhymeScheme !== defaultRhymeScheme &&
+      replacement.poem.rhymeScheme !== existingRhymeOverride) {
     throw new Error("An alternative rhyme scheme requires explicit human approval.");
+  }
+  const rhymeOverrides = { ...project.rhymeOverrides };
+  if (humanApprovedRhymeScheme) {
+    rhymeOverrides[replacement.creatureId] = humanApprovedRhymeScheme;
+  } else if (replacement.poem.rhymeScheme === defaultRhymeScheme) {
+    delete rhymeOverrides[replacement.creatureId];
   }
   const creatures = [...project.content.creatures];
   creatures[existingIndex] = replacement;
   const content = { ...project.content, creatures };
   const previousEncodingPaths = new Set(
-    validateBookContent(project.content, project.selection.current, project.request).report.issues
+    validatePersistedContent(project).report.issues
       .filter((issue) => issue.code === "content_encoding_mojibake")
       .map((issue) => issue.path)
   );
-  const validation = validateBookContent(content, project.selection.current, project.request, undefined,
-    humanApprovedRhymeScheme ? { humanApprovedRhymeSchemes: { [replacement.creatureId]: humanApprovedRhymeScheme } } : undefined);
+  const validation = validateBookContent(content, project.selection.current, project.request, undefined, {
+    humanApprovedRhymeSchemes: rhymeOverrides
+  });
   const encodingIssues = validation.report.issues.filter((issue) => issue.code === "content_encoding_mojibake");
   const replacementPath = `creatures.${existingIndex}.`;
   const blockingEncodingIssues = encodingIssues.filter(
@@ -350,6 +367,7 @@ export async function replaceCreatureContent(
       ? project.request.language === "kn" ? "language_review_required" : "content_review_required"
       : "content_review_required",
     content,
+    rhymeOverrides,
     sourceRevision: project.sourceRevision + 1,
     designPreview: undefined,
     primaryOutput: { status: "not_ready" },
@@ -364,7 +382,7 @@ export async function replaceClosingNote(projectDir: string, closingNoteInput: u
   if (!project.content) throw new Error("Book content must exist before replacing the closing note.");
   const closingNote = closingNoteCorrectionSchema.parse(closingNoteInput);
   const content = { ...project.content, closingNote };
-  const validation = validateBookContent(content, project.selection.current, project.request);
+  const validation = validatePersistedContent(project, content);
   const blockingIssues = validation.report.issues.filter(
     (issue) => issue.level === "error" && issue.path === "closingNote"
   );
@@ -396,7 +414,7 @@ export async function generateDocuments(
 ): Promise<BookProject> {
   const project = await loadProject(projectDir);
   const content: BookContent = bookContentSchema.parse(project.content);
-  const validation = validateBookContent(content, project.selection.current, project.request);
+  const validation = validatePersistedContent(project, content);
   if (!validation.report.valid) throw new Error("Book content has blocking validation errors.");
   const design = requireApprovedDesign(project);
   const requested = formats ?? ["docx"];
@@ -481,6 +499,7 @@ export async function reworkPrimaryOutput(projectDir: string, contentInput: unkn
     sourceRevision,
     reworksUsed: project.reworksUsed + 1,
     content: validation.content,
+    rhymeOverrides: {},
     designPreview: undefined,
     exportFailures: [],
     primaryOutput: { status: "not_ready" },
@@ -591,7 +610,7 @@ export async function acceptCanvaResult(projectDir: string, result: unknown): Pr
 
 export function deliverySummary(project: BookProject) {
   const validation = project.content
-    ? validateBookContent(project.content, project.selection.current, project.request)
+    ? validatePersistedContent(project)
     : undefined;
   const contentReviewIssues = validation?.report.issues
     .filter((issue) => issue.level === "warning" && issue.code !== "kannada_pptx_font_required")
