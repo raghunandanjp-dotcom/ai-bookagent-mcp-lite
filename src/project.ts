@@ -5,11 +5,13 @@ import { z } from "zod";
 import {
   bookContentSchema,
   bookRequestSchema,
+  humanApprovedAlternativeRhymeSchemeSchema,
   illustrationAssetSchema,
   selectionStateSchema,
   type BookContent,
   type BookRequest,
   type IllustrationAsset,
+  type HumanApprovedAlternativeRhymeScheme,
   type SelectionState
 } from "./domain.ts";
 import { bookDesignSchema, type BookDesign } from "./design.ts";
@@ -153,6 +155,8 @@ export interface BookProject {
   request: BookRequest;
   selection: SelectionState;
   contentGeneration: { iterationsUsed: number; currentAttempt: 0 | 1 | 2 };
+  /** Durable explicit human attestations for corrected, non-default poems. */
+  rhymeOverrides: Record<string, HumanApprovedAlternativeRhymeScheme>;
   content?: BookContent;
   illustrations: IllustrationAsset[];
   design?: BookDesign;
@@ -188,6 +192,7 @@ export function createProject(input: unknown): BookProject {
       cumulativeExclusions: []
     },
     contentGeneration: { iterationsUsed: 0, currentAttempt: 0 },
+    rhymeOverrides: {},
     illustrations: [],
     design: undefined,
     designPreview: undefined,
@@ -211,6 +216,7 @@ export function parseProject(input: unknown): BookProject {
     reworksUsed: typeof candidate.reworksUsed === "number" ? candidate.reworksUsed : 0,
     primaryOutput: (candidate.primaryOutput as PrimaryOutputAcceptance | undefined) ?? { status: "not_ready" },
     contentGeneration: (candidate.contentGeneration as BookProject["contentGeneration"] | undefined) ?? { iterationsUsed: 0, currentAttempt: 0 },
+    rhymeOverrides: z.record(humanApprovedAlternativeRhymeSchemeSchema).parse(candidate.rhymeOverrides ?? {}),
     request: bookRequestSchema.parse(candidate.request),
     selection: selectionStateSchema.parse(candidate.selection),
     content: candidate.content ? bookContentSchema.parse(candidate.content) : undefined,
