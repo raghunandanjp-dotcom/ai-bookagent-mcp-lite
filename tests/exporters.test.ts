@@ -102,7 +102,7 @@ describe("DOCX exporter", () => {
     expect(new Set(digests).size).toBe(2);
   });
 
-  it("declares Kannada language and font without affecting English defaults", async () => {
+  it("uses a Kannada complex-script font for editable DOCX without affecting English defaults", async () => {
     const kannada = structuredClone(content);
     kannada.language = "kn";
     kannada.title = "ಸಾಗರ ಸ್ನೇಹಿತರು";
@@ -111,7 +111,9 @@ describe("DOCX exporter", () => {
     kannada.creatures[0]!.poem.text = "ಅಲೆ ಹಾಡು ಒಂದು\nಅಲೆ ಹಾಡು ಎರಡು\nಅಲೆ ಹಾಡು ಮೂರು\n\nಸಾಗರ ಗೀತೆ ಒಂದು\nಸಾಗರ ಗೀತೆ ಎರಡು\nಸಾಗರ ಗೀತೆ ಮೂರು";
     const result = await documentParts(kannada);
 
-    expect(result.styles).toContain("Noto Sans Kannada");
+    expect(result.styles).toContain("Nirmala UI");
+    expect(result.document).toContain('w:cs="Nirmala UI"');
+    expect(`${result.document}${result.styles}`).not.toContain("Noto Sans Kannada");
     expect(result.styles).toContain('<w:lang w:val="kn-IN"/>');
     expect(result.document).toContain("ಸಾಗರ ಸ್ನೇಹಿತರು");
   });
