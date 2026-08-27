@@ -11,17 +11,21 @@ import {
 } from "./render-qa-process.mjs";
 
 const root = process.cwd();
-const outputRoot = path.join(root, ".docx-qa");
-const fixture = (count) => ({
-  schemaVersion: "1.1", title: `Wonderful Creatures - ${count}`, language: "en", selectedAgeBand: "6-8", effectiveAgeBand: "6-8", generationAttempt: 0,
+const outputRoot = process.env.AI_BOOKAGENT_DOCX_QA_DIR
+  ? path.resolve(process.env.AI_BOOKAGENT_DOCX_QA_DIR)
+  : path.join(root, ".docx-qa");
+const fixture = (count, language = "en") => ({
+  schemaVersion: "1.1", title: language === "kn" ? "ಕಾಡಿನ ಗೆಳೆಯರು" : `Wonderful Creatures - ${count}`, language, selectedAgeBand: "6-8", effectiveAgeBand: "6-8", generationAttempt: 0,
   creatures: Array.from({ length: count }, (_, index) => ({
-    creatureId: `creature-${index + 1}`, displayName: `Creature ${index + 1}`,
-    poem: { text: "Dancing softly in the light\nEvery step is small and bright\nResting by a tree\n\nMorning brings a golden glow\nOff into the world we go\nHappy, wild, and free", language: "en", reviewStatus: "needs_review", title: `Creature ${index + 1}'s Song`, structureVersion: "1.0", rhymeScheme: "AAB" },
-    funFact: { text: `Creature ${index + 1} has a useful fact to discover.`, language: "en", reviewStatus: "source_supported" },
-    activity: { text: `Draw creature ${index + 1} safely in its habitat.`, language: "en", reviewStatus: "human_reviewed" },
+    creatureId: `creature-${index + 1}`, displayName: language === "kn" ? `ಕಾಡಿನ ಗೆಳೆಯ ${index + 1}` : `Creature ${index + 1}`,
+    poem: { text: language === "kn" ? "ಕಾಡಿನ ಹಾದಿಯಲಿ ಆನೆಯ ಪಯಣ\nಕಿವಿಗಳ ಬೀಸಾಟ ಗಾಳಿಯ ಹಾಡು\nಸೊಂಡಿಲ ನೀರಲಿ ತಂಪಾದ ಕ್ಷಣ\n\nಗುಂಪಿನ ಜೊತೆಯಲಿ ಸಂತಸದ ಪಯಣ\nಮರದ ನೆರಳಲಿ ಹಾಯಾದ ನಿದ್ರೆ\nಕಾಡಿನ ಗೆಳೆಯನ ಮುದ್ದಾದ ಕ್ಷಣ" : "Dancing softly in the light\nEvery step is small and bright\nResting by a tree\n\nMorning brings a golden glow\nOff into the world we go\nHappy, wild, and free", language, reviewStatus: "needs_review", title: language === "kn" ? "ಕಾಡಿನ ದೊಡ್ಡ ಗೆಳೆಯ" : `Creature ${index + 1}'s Song`, structureVersion: "1.0", rhymeScheme: "AAB" },
+    funFact: { text: language === "kn" ? "ಆನೆಗಳು ತಮ್ಮ ಸೊಂಡಿಲನ್ನು ನೀರು ಕುಡಿಯಲು ಮತ್ತು ವಸ್ತುಗಳನ್ನು ಹಿಡಿಯಲು ಬಳಸುತ್ತವೆ." : `Creature ${index + 1} has a useful fact to discover.`, language, reviewStatus: "source_supported" },
+    activity: { text: language === "kn" ? "ಆನೆಯ ಚಿತ್ರವನ್ನು ನೋಡಿ ಅದರ ಕಿವಿ, ಸೊಂಡಿಲು ಮತ್ತು ಕಾಲುಗಳನ್ನು ಗುರುತಿಸಿ ಚಿತ್ರ ಬಿಡಿಸಿ." : `Draw creature ${index + 1} safely in its habitat.`, language, reviewStatus: "human_reviewed" },
     illustrationBrief: `A friendly view of creature ${index + 1} in its habitat.`, altText: `Creature ${index + 1} shown clearly in its habitat.`
   })),
-  closingNote: "Keep wondering about every creature you meet."
+  closingNote: language === "kn"
+    ? "ಪ್ರತಿ ಕಾಡುಜೀವಿಗೂ ತನ್ನದೇ ವಾಸಸ್ಥಾನ ಮತ್ತು ಪಾತ್ರವಿದೆ."
+    : "Keep wondering about every creature you meet."
 });
 
 const { exportDocx } = await import(pathToFileURL(path.join(root, "dist", "exporters.js")).href);
@@ -57,10 +61,10 @@ async function assertRenderedFooters(pdfPath, expectedPages) {
   return footers;
 }
 
-for (const count of [1, 5, 11, 20]) {
-  const directory = path.join(outputRoot, `${count}-creatures`);
+for (const { count, language = "en" } of [{ count: 1 }, { count: 5 }, { count: 11 }, { count: 20 }, { count: 3, language: "kn" }]) {
+  const directory = path.join(outputRoot, language === "kn" ? "kannada-3-creatures" : `${count}-creatures`);
   await mkdir(directory, { recursive: true });
-  const content = fixture(count);
+  const content = fixture(count, language);
   const illustrations = await createQaIllustrations(directory, content.creatures.map((creature) => creature.creatureId));
   const record = await exportDocx(content, directory, illustrations);
   const docxPath = path.join(directory, record.relativePath);
@@ -75,7 +79,7 @@ for (const count of [1, 5, 11, 20]) {
   if (canRender && renderedPages !== expectedLogicalPages) {
     throw new Error(`Expected ${expectedLogicalPages} rendered DOCX pages for ${count} creatures, found ${renderedPages}.`);
   }
-  manifest.push({ creatures: count, expectedLogicalPages, docx: path.relative(root, docxPath), renderedPages, renderedFooters, rendered: canRender });
+  manifest.push({ creatures: count, language, expectedLogicalPages, docx: path.relative(root, docxPath), renderedPages, renderedFooters, rendered: canRender });
 }
 await writeFile(path.join(outputRoot, "manifest.json"), `${JSON.stringify(manifest, null, 2)}\n`, "utf8");
 console.log(canRender

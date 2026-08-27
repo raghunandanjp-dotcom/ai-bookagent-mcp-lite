@@ -68,6 +68,15 @@ function documentFont(language: BookContent["language"]): string {
   return language === "kn" ? "Noto Sans Kannada" : "Noto Sans";
 }
 
+// LibreOffice on Windows can substitute an unshaped fallback for Noto Sans
+// Kannada when that optional font is absent. Nirmala UI ships with Windows and
+// supports Kannada complex-script shaping, so use it for editable DOCX text.
+// Keep the existing Noto Sans Kannada reference for PPTX and HTML, whose font
+// requirements are intentionally explicit and unchanged.
+function docxFont(language: BookContent["language"]): string {
+  return language === "kn" ? "Nirmala UI" : documentFont(language);
+}
+
 function documentLanguage(language: BookContent["language"]): string {
   return language === "kn" ? "kn-IN" : "en-US";
 }
@@ -77,7 +86,7 @@ function sectionTitle(value: "poem" | "funFact" | "activity"): string {
 }
 
 function run(text: string, content: BookContent, options: Omit<IRunOptions, "text"> = {}): TextRun {
-  return new TextRun({ text, font: documentFont(content.language), ...options });
+  return new TextRun({ text, font: docxFont(content.language), ...options });
 }
 
 function pageHeading(content: BookContent, creatureName: string, section: string): Paragraph[] {
@@ -168,7 +177,7 @@ function reviewNotice(content: BookContent, status: BookContent["creatures"][num
 }
 
 async function docxChildren(content: BookContent, illustrations: ApprovedIllustrationSet): Promise<Paragraph[]> {
-  const font = documentFont(content.language);
+  const font = docxFont(content.language);
   const imageData = new Map<string, Buffer>();
   for (const asset of [illustrations.cover, ...illustrations.creatures.values()]) imageData.set(asset.assetId, await readFile(asset.absolutePath));
   const children: Paragraph[] = [
@@ -234,7 +243,7 @@ export async function exportDocx(content: BookContent, exportDir: string, illust
     description: `Children's creature poetry activity book for ages ${content.effectiveAgeBand}; ${language}; ${content.creatures.length} creatures`,
     styles: {
       default: {
-        document: { run: { font: documentFont(content.language), language: { value: language } } }
+        document: { run: { font: docxFont(content.language), language: { value: language } } }
       }
     },
     sections: [{
