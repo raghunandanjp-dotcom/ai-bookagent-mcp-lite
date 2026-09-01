@@ -77,8 +77,20 @@ function docxFont(language: BookContent["language"]): string {
   return language === "kn" ? "Nirmala UI" : documentFont(language);
 }
 
+function docxRunFont(language: BookContent["language"]): IRunOptions["font"] {
+  // Tell Word that ambiguous Kannada combining marks belong to the complex
+  // script font. Without the hint, Word can split a run between its normal and
+  // complex-script font paths, which produces visibly uneven glyph metrics.
+  return language === "kn" ? { name: docxFont(language), hint: "cs" } : docxFont(language);
+}
+
 function documentLanguage(language: BookContent["language"]): string {
   return language === "kn" ? "kn-IN" : "en-US";
+}
+
+function docxRunLanguage(language: BookContent["language"]): IRunOptions["language"] {
+  const value = documentLanguage(language);
+  return language === "kn" ? { value, bidirectional: value } : { value };
 }
 
 function sectionTitle(value: "poem" | "funFact" | "activity"): string {
@@ -86,7 +98,7 @@ function sectionTitle(value: "poem" | "funFact" | "activity"): string {
 }
 
 function run(text: string, content: BookContent, options: Omit<IRunOptions, "text"> = {}): TextRun {
-  return new TextRun({ text, font: docxFont(content.language), ...options });
+  return new TextRun({ text, font: docxRunFont(content.language), language: docxRunLanguage(content.language), ...options });
 }
 
 function pageHeading(content: BookContent, creatureName: string, section: string): Paragraph[] {
@@ -177,24 +189,23 @@ function reviewNotice(content: BookContent, status: BookContent["creatures"][num
 }
 
 async function docxChildren(content: BookContent, illustrations: ApprovedIllustrationSet): Promise<Paragraph[]> {
-  const font = docxFont(content.language);
   const imageData = new Map<string, Buffer>();
   for (const asset of [illustrations.cover, ...illustrations.creatures.values()]) imageData.set(asset.assetId, await readFile(asset.absolutePath));
   const children: Paragraph[] = [
     new Paragraph({
       alignment: AlignmentType.CENTER,
       spacing: { before: 1800, after: 360 },
-      children: [new TextRun({ text: content.title, bold: true, size: 56, color: COLORS.navy, font })]
+      children: [run(content.title, content, { bold: true, size: 56, color: COLORS.navy })]
     }),
     new Paragraph({
       alignment: AlignmentType.CENTER,
       spacing: { after: 260 },
-      children: [new TextRun({ text: "A creature poetry, facts, and activities book", size: 28, color: COLORS.teal, font })]
+      children: [run("A creature poetry, facts, and activities book", content, { size: 28, color: COLORS.teal })]
     }),
     illustrationParagraph(illustrations.cover, imageData.get(illustrations.cover.assetId)!, 540, 430),
     new Paragraph({
       alignment: AlignmentType.CENTER,
-      children: [new TextRun({ text: `Ages ${content.effectiveAgeBand} · ${content.language === "kn" ? "Kannada (experimental)" : "English"} · ${content.creatures.length} creatures`, size: 24, color: COLORS.ink, font })]
+      children: [run(`Ages ${content.effectiveAgeBand} · ${content.language === "kn" ? "Kannada (experimental)" : "English"} · ${content.creatures.length} creatures`, content, { size: 24, color: COLORS.ink })]
     })
   ];
 
@@ -224,7 +235,7 @@ async function docxChildren(content: BookContent, illustrations: ApprovedIllustr
   }
   if (content.closingNote) {
     children.push(new Paragraph({ pageBreakBefore: true, heading: HeadingLevel.HEADING_1, alignment: AlignmentType.CENTER, children: [run("A final note", content, { bold: true, size: 48, color: COLORS.navy })] }));
-    children.push(new Paragraph({ alignment: AlignmentType.CENTER, children: [new TextRun({ text: content.closingNote, size: 30, color: COLORS.navy, font })] }));
+    children.push(new Paragraph({ alignment: AlignmentType.CENTER, children: [run(content.closingNote, content, { size: 30, color: COLORS.navy })] }));
   }
   return children;
 }
@@ -243,7 +254,7 @@ export async function exportDocx(content: BookContent, exportDir: string, illust
     description: `Children's creature poetry activity book for ages ${content.effectiveAgeBand}; ${language}; ${content.creatures.length} creatures`,
     styles: {
       default: {
-        document: { run: { font: docxFont(content.language), language: { value: language } } }
+        document: { run: { font: docxRunFont(content.language), language: docxRunLanguage(content.language) } }
       }
     },
     sections: [{
