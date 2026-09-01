@@ -113,9 +113,39 @@ describe("DOCX exporter", () => {
 
     expect(result.styles).toContain("Nirmala UI");
     expect(result.document).toContain('w:cs="Nirmala UI"');
+    expect(result.document).toContain('w:hint="cs"');
+    expect(result.document).toContain('w:bidi="kn-IN"');
     expect(`${result.document}${result.styles}`).not.toContain("Noto Sans Kannada");
-    expect(result.styles).toContain('<w:lang w:val="kn-IN"/>');
+    expect(result.styles).toContain('w:lang w:val="kn-IN" w:bidi="kn-IN"');
     expect(result.document).toContain("ಸಾಗರ ಸ್ನೇಹಿತರು");
+  });
+
+  it("pins complex-script font selection for the elephant, tiger, and peacock review trio", async () => {
+    const kannada = structuredClone(content);
+    kannada.language = "kn";
+    kannada.title = "ಕಾಡಿನ ಗೆಳೆಯರು";
+    kannada.creatures = [
+      ["elephant", "ಆನೆ", "ಆನೆಯ ಸೊಂಡಿಲು ನೀರಲಿ ಆಟ", "ಆನೆಯ ಹೆಜ್ಜೆ ಮಣ್ಣಲಿ ಹಾಡು"],
+      ["tiger", "ಹುಲಿ", "ಹುಲಿಯ ಹೆಜ್ಜೆ ಕಾಡಲಿ ಸದ್ದು", "ಹುಲಿಯ ಪಟ್ಟೆ ಬಿಸಿಲಲಿ ಹೊಳುಕು"],
+      ["peacock", "ನವಿಲು", "ನವಿಲು ಗರಿಗಳ ಬಣ್ಣದ ಆಟ", "ನವಿಲು ಮಳೆಯಲಿ ಕುಣಿಯುವ ಹಾಡು"]
+    ].map(([creatureId, displayName, firstLine, secondLine]) => ({
+      ...structuredClone(content.creatures[0]!),
+      creatureId,
+      displayName,
+      poem: {
+        ...structuredClone(content.creatures[0]!.poem),
+        title: `${displayName} ಹಾಡು`,
+        text: `${firstLine}\n${secondLine}\n${firstLine}\n\n${secondLine}\n${firstLine}\n${secondLine}`,
+        language: "kn" as const
+      },
+      funFact: { ...content.creatures[0]!.funFact, text: firstLine, language: "kn" as const },
+      activity: { ...content.creatures[0]!.activity, text: secondLine, language: "kn" as const }
+    }));
+    const result = await documentParts(kannada);
+
+    for (const name of ["ಆನೆ", "ಹುಲಿ", "ನವಿಲು"]) expect(result.document).toContain(name);
+    expect(result.document.match(/w:hint="cs"/g)?.length).toBeGreaterThan(20);
+    expect(result.document.match(/w:bidi="kn-IN"/g)?.length).toBeGreaterThan(20);
   });
 
   it("keeps the complete page label outside a cached PAGE field for odd and even two-digit pages", async () => {
