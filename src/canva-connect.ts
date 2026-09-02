@@ -3,8 +3,6 @@ import { createServer } from "node:http";
 import { mkdir, rm } from "node:fs/promises";
 import path from "node:path";
 import { spawn } from "node:child_process";
-import { Writable } from "node:stream";
-import readline from "node:readline";
 import { exportPptx } from "./exporters.ts";
 import { resolveApprovedIllustrations } from "./illustrations.ts";
 import { fileDigest, loadProject, resolveInside, safeOutputName, saveProject, type BookProject } from "./project.ts";
@@ -274,14 +272,32 @@ export async function importApprovedCanvaPptx(projectDir: string, vault: Credent
   }
 }
 
-class HiddenOutput extends Writable {
-  _write(_chunk: unknown, _encoding: BufferEncoding, callback: (error?: Error | null) => void): void { callback(); }
-}
-
 export async function promptHidden(question: string): Promise<string> {
+  if (!process.stdin.isTTY || typeof process.stdin.setRawMode !== "function") {
+    throw new CanvaConnectError("secure_storage_unavailable", false, "Canva setup requires an interactive terminal for hidden credential input.");
+  }
   process.stdout.write(question);
-  const interface_ = readline.createInterface({ input: process.stdin, output: new HiddenOutput() });
-  return new Promise((resolve) => interface_.question("", (answer) => { interface_.close(); process.stdout.write("\n"); resolve(answer.trim()); }));
+  return new Promise((resolve, reject) => {
+    let answer = "";
+    const finish = (error?: Error) => {
+      process.stdin.off("data", onData);
+      process.stdin.setRawMode(false);
+      process.stdin.pause();
+      process.stdout.write("\n");
+      if (error) reject(error); else resolve(answer.trim());
+    };
+    const onData = (chunk: Buffer) => {
+      for (const character of chunk.toString("utf8")) {
+        if (character === "\r" || character === "\n") { finish(); return; }
+        if (character === "\u0003") { finish(new CanvaConnectError("oauth_failed", false, "Canva setup was cancelled.")); return; }
+        if (character === "\u0008" || character === "\u007f") { answer = answer.slice(0, -1); continue; }
+        answer += character;
+      }
+    };
+    process.stdin.setRawMode(true);
+    process.stdin.resume();
+    process.stdin.on("data", onData);
+  });
 }
 
 export async function configureCanvaConnect(vault: CredentialVault, clientId: string, clientSecret: string, fetcher: FetchLike = fetch): Promise<void> {
