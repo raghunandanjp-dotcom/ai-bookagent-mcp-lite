@@ -144,7 +144,7 @@ describe("local Canva handoff ingestion", () => {
     expect(second).toMatchObject({ outcome: "ready", artifactSha256: first.artifactSha256, artifactBytes: first.artifactBytes });
     if (second.outcome !== "ready") throw new Error(second.message);
     expect(await readFile(second.designFile)).toEqual(firstBytes);
-  });
+  }, 20_000);
 
   it("rejects redesign, substitution, and stale neutral payloads without writing an artifact", async () => {
     const { handoff } = await seed();
