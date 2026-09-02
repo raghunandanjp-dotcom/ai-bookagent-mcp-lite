@@ -97,6 +97,24 @@ choose age and language
 
 Generated content, SVG sources, raster assets, design files, exports, checksums, and resumable state remain inside the selected project directory. Review the HTML and DOCX visually; the server's validation is not a substitute for editorial, factual, language, or accessibility judgment.
 
+## Canva Connect feasibility proof
+
+The repository includes a deliberately narrow local proof harness for validating Canva's direct binary PPTX import before any book handoff is implemented. It generates a synthetic two-slide PPTX only; it never reads a book project or sends book content. Configure a **Public** Canva integration with `design:content:write` and `design:meta:read`, and register this exact redirect URI:
+
+```text
+http://127.0.0.1:3001/oauth/callback
+```
+
+Generate the client secret in Canva and keep it private. In a PowerShell session, set it only for that process (never commit it or paste it into chat), then start the harness:
+
+```powershell
+$env:CANVA_CLIENT_ID = "your-client-id"
+$env:CANVA_CLIENT_SECRET = "your-client-secret"
+npm run canva:proof
+```
+
+Open `http://127.0.0.1:3001/`, authorize the account, and inspect the returned Canva design. Passing requires two separate pages, editable text, a movable image, and an editable shape. A passing proof establishes only Canva API/PPTX capability; it does not authorize the transfer of a book or replace the project parity gates.
+
 ## CLI quick reference
 
 The CLI is useful for fixture-driven or scripted local work. JSON inputs use the schemas documented in [Tool contracts](docs/tool-contracts.md).
