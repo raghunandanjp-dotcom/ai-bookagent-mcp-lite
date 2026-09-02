@@ -272,16 +272,23 @@ export async function importApprovedCanvaPptx(projectDir: string, vault: Credent
   }
 }
 
-export async function promptHidden(question: string): Promise<string> {
+export function maskedSecretFeedback(length: number): string {
+  const safeLength = Math.max(0, Math.floor(length));
+  return safeLength === 0 ? "" : `${"•".repeat(Math.min(safeLength, 32))} (${safeLength} characters)`;
+}
+
+async function promptTerminal(question: string, sensitive: boolean): Promise<string> {
   if (!process.stdin.isTTY || typeof process.stdin.setRawMode !== "function") {
-    throw new CanvaConnectError("secure_storage_unavailable", false, "Canva setup requires an interactive terminal for hidden credential input.");
+    throw new CanvaConnectError("secure_storage_unavailable", false, "Canva setup requires an interactive terminal for credential input.");
   }
   process.stdout.write(question);
   return new Promise((resolve, reject) => {
     let answer = "";
+    const wasRaw = process.stdin.isRaw;
+    const redrawSecret = () => process.stdout.write(`\u001b[2K\r${question}${maskedSecretFeedback(answer.length)}`);
     const finish = (error?: Error) => {
       process.stdin.off("data", onData);
-      process.stdin.setRawMode(false);
+      process.stdin.setRawMode(wasRaw);
       process.stdin.pause();
       process.stdout.write("\n");
       if (error) reject(error); else resolve(answer.trim());
@@ -290,14 +297,29 @@ export async function promptHidden(question: string): Promise<string> {
       for (const character of chunk.toString("utf8")) {
         if (character === "\r" || character === "\n") { finish(); return; }
         if (character === "\u0003") { finish(new CanvaConnectError("oauth_failed", false, "Canva setup was cancelled.")); return; }
-        if (character === "\u0008" || character === "\u007f") { answer = answer.slice(0, -1); continue; }
+        if (character === "\u0008" || character === "\u007f") {
+          answer = answer.slice(0, -1);
+          if (sensitive) redrawSecret(); else process.stdout.write("\b \b");
+          continue;
+        }
         answer += character;
+        if (sensitive) redrawSecret(); else process.stdout.write(character);
       }
     };
     process.stdin.setRawMode(true);
     process.stdin.resume();
     process.stdin.on("data", onData);
   });
+}
+
+/** Client IDs are public integration identifiers; show them so setup has normal terminal feedback. */
+export async function promptVisible(question: string): Promise<string> {
+  return promptTerminal(question, false);
+}
+
+/** Secrets never echo. Only a bullet/count progress indicator is drawn to the interactive terminal. */
+export async function promptHidden(question: string): Promise<string> {
+  return promptTerminal(question, true);
 }
 
 export async function configureCanvaConnect(vault: CredentialVault, clientId: string, clientSecret: string, fetcher: FetchLike = fetch): Promise<void> {

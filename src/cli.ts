@@ -19,7 +19,7 @@ import {
   updateCreatureSelection
 } from "./workflow.ts";
 import { loadProject } from "./project.ts";
-import { NativeCredentialVault, canvaConnectStatus, configureCanvaConnect, consentToLocalCanvaImport, importApprovedCanvaPptx, promptHidden } from "./canva-connect.ts";
+import { NativeCredentialVault, canvaConnectStatus, configureCanvaConnect, consentToLocalCanvaImport, importApprovedCanvaPptx, promptHidden, promptVisible } from "./canva-connect.ts";
 
 function usage(): never {
   console.error(`Usage:
@@ -57,8 +57,8 @@ if (command === "canva") {
   const vault = new NativeCredentialVault();
   let canvaResult: unknown;
   if (projectDir === "configure") {
-    const clientId = await promptHidden("Canva client ID: ");
-    const clientSecret = await promptHidden("Canva client secret (hidden): ");
+    const clientId = await promptVisible("Canva client ID (visible; Enter to continue, Ctrl+C to cancel): ");
+    const clientSecret = await promptHidden("Canva client secret (masked; Enter to continue, Ctrl+C to cancel): ");
     await configureCanvaConnect(vault, clientId, clientSecret);
     canvaResult = { configured: true };
   } else if (projectDir === "status") canvaResult = await canvaConnectStatus(vault);
