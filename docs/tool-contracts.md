@@ -100,7 +100,11 @@ Optional. Records a Canva design/template choice and changes the handoff mode to
 
 ## `prepare_canva_handoff`
 
-Returns the approved `BookDesign` page plan in a versioned, adapter-neutral `create_editable_design` envelope with project/revision correlation, theme, format profile, exact approved assets, source revision, design revision, and illustration digest. Default mode is `faithful_canonical_reproduction`. It does not call Canva itself. Adapters must report unavoidable exceptions and fail explicitly if editable Kannada cannot be preserved.
+Returns the approved `BookDesign` page plan in a versioned, adapter-neutral `create_editable_design` envelope with project/revision correlation, theme, format profile, exact approved assets, source revision, design revision, illustration digest, readiness evidence, and the timestamp of explicit consent. Full approval, provenance, licensing, byte-count, and checksum records travel with each asset. Default mode is `faithful_canonical_reproduction`. It does not call Canva itself. Adapters must report unavoidable exceptions and fail explicitly if editable Kannada cannot be preserved.
+
+## `prepare_canva_import_artifact`
+
+Accepts the neutral handoff returned by `prepare_canva_handoff`, revalidates it against the current approved local `BookDesign`, accepted DOCX, readiness/consent evidence, and every checksum-bound illustration byte, and writes a self-contained private HTML presentation under the project's `canva` directory. The result supplies the current Canva connector's `import_design_from_url` capability arguments using `design_file`; no public URL is created or required. Each canonical page is marked with `data-document-role="page"`, text remains editable, exact approved image bytes are embedded, and the full handoff metadata remains inside the artifact. The adapter returns a discriminated `ready` or `failed` result with a stable code and retryability. It rejects stale or altered payloads, asset substitution, template selection, and `explicit_redesign_requested` mode.
 
 ## `record_canva_result`
 

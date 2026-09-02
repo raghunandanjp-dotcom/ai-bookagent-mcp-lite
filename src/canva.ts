@@ -1,6 +1,12 @@
 import { z } from "zod";
-import { LIMITS, type BookContent, type BookRequest, type IllustrationAsset } from "./domain.ts";
-import type { BookDesign } from "./design.ts";
+import { LIMITS, illustrationAssetSchema, type BookContent, type BookRequest, type IllustrationAsset } from "./domain.ts";
+import {
+  designFormatExceptionSchema,
+  designPageSchema,
+  designThemeSchema,
+  presentationFormatProfileSchema,
+  type BookDesign
+} from "./design.ts";
 import type { CanvaState } from "./project.ts";
 
 export const canvaCapabilitySchema = z.object({
@@ -8,6 +14,62 @@ export const canvaCapabilitySchema = z.object({
   connectorName: z.string().optional(),
   toolName: z.string().optional()
 });
+
+export const canvaHandoffSchema = z.object({
+  handoffVersion: z.literal("2.0"),
+  operation: z.literal("create_editable_design"),
+  mode: z.enum(["faithful_canonical_reproduction", "explicit_redesign_requested"]),
+  correlation: z.object({ projectId: z.string().min(1), revision: z.number().int().positive() }).strict(),
+  sourceRevision: z.number().int().positive(),
+  designRevision: z.number().int().positive(),
+  illustrationSetDigest: z.string().regex(/^[a-f0-9]{64}$/u),
+  authorization: z.object({
+    readiness: z.literal("ready"),
+    checkedAt: z.string().datetime(),
+    consentedAt: z.string().datetime(),
+    adapter: z.object({ connectorName: z.string().min(1).optional(), toolName: z.string().min(1).optional() }).optional()
+  }).strict(),
+  selectedDesign: z.object({
+    designId: z.string().min(1),
+    title: z.string().min(1),
+    templateUrl: z.string().url().optional(),
+    selectedAt: z.string().datetime(),
+    sourceRevision: z.number().int().positive(),
+    designRevision: z.number().int().positive().optional()
+  }).strict().optional(),
+  designType: z.literal("presentation"),
+  title: z.string().min(1),
+  dimensions: z.literal("16:9"),
+  slideCount: z.number().int().positive(),
+  recommendMultipleVolumes: z.boolean(),
+  language: z.enum(["en", "kn"]),
+  audience: z.string().min(1),
+  creaturesCovered: z.array(z.string().min(1)),
+  locale: z.enum(["en-US", "kn-IN"]),
+  theme: designThemeSchema,
+  formatProfile: presentationFormatProfileSchema,
+  formatExceptions: z.array(designFormatExceptionSchema),
+  typography: z.union([
+    z.object({ script: z.literal("Latin"), preferredFont: z.literal("Noto Sans"), preserveEditableText: z.literal(true) }).strict(),
+    z.object({
+      script: z.literal("Kannada"), preferredFont: z.literal("Noto Sans Kannada"), requireKannadaGlyphCoverage: z.literal(true),
+      preserveEditableText: z.literal(true), fallbackPolicy: z.string().min(1)
+    }).strict()
+  ]),
+  review: z.object({ experimental: z.boolean(), humanLanguageReviewRequired: z.boolean(), renderedGlyphReviewRequired: z.boolean() }).strict(),
+  instruction: z.string().min(1),
+  illustrations: z.array(illustrationAssetSchema).min(1),
+  pages: z.array(designPageSchema).min(4).max(100)
+}).strict().superRefine((handoff, context) => {
+  if (handoff.slideCount !== handoff.pages.length) {
+    context.addIssue({ code: z.ZodIssueCode.custom, path: ["slideCount"], message: "Canva slide count must match the canonical page count." });
+  }
+  if (handoff.mode === "faithful_canonical_reproduction" && handoff.selectedDesign) {
+    context.addIssue({ code: z.ZodIssueCode.custom, path: ["selectedDesign"], message: "Faithful reproduction must not select a template or existing design." });
+  }
+});
+
+export type CanvaHandoff = z.infer<typeof canvaHandoffSchema>;
 
 const designIdSchema = z.string().trim().min(1).regex(/^[A-Za-z0-9_-]+$/, "The Canva design ID contains unsupported characters.");
 
@@ -79,19 +141,22 @@ export function prepareCanvaHandoff(
   illustrations: IllustrationAsset[],
   canva: CanvaState,
   design: BookDesign
-) {
+): CanvaHandoff {
   if (canva.status !== "consented" && !(canva.status === "failed" && canva.failure?.retryable && canva.consentedAt)) {
     throw new Error("Explicit Canva consent is required before preparing the handoff.");
   }
   if (design.status !== "approved" || design.sourceRevision !== canva.sourceRevision || design.designRevision !== canva.designRevision || design.illustrationSetDigest !== canva.illustrationSetDigest) {
     throw new Error("The approved canonical BookDesign does not match the consented Canva handoff.");
   }
+  if (canva.readiness !== "ready" || !canva.checkedAt || !canva.consentedAt) {
+    throw new Error("Current Canva readiness and explicit consent evidence are required before preparing the handoff.");
+  }
   const requiredAssetIds = ["cover", ...content.creatures.map((creature) => `creature-${creature.creatureId}`)];
   if (illustrations.length !== requiredAssetIds.length || requiredAssetIds.some((id) => illustrations.filter((asset) => asset.assetId === id && asset.approvalStatus === "approved").length !== 1)) {
     throw new Error("Every required cover and creature illustration must be uniquely approved before preparing the Canva handoff.");
   }
   const slideCount = design.pages.length;
-  return {
+  return canvaHandoffSchema.parse({
     handoffVersion: "2.0",
     operation: "create_editable_design",
     mode: canva.selection ? "explicit_redesign_requested" : "faithful_canonical_reproduction",
@@ -99,6 +164,12 @@ export function prepareCanvaHandoff(
     sourceRevision: design.sourceRevision,
     designRevision: design.designRevision,
     illustrationSetDigest: design.illustrationSetDigest,
+    authorization: {
+      readiness: canva.readiness,
+      checkedAt: canva.checkedAt,
+      consentedAt: canva.consentedAt,
+      ...(canva.adapter ? { adapter: canva.adapter } : {})
+    },
     ...(canva.selection ? { selectedDesign: canva.selection } : {}),
     designType: "presentation",
     title: content.title,
@@ -120,13 +191,9 @@ export function prepareCanvaHandoff(
     instruction: request.language === "kn"
       ? "Faithfully reproduce the approved canonical BookDesign as an editable Canva presentation. Preserve page order, every Kannada character, line and stanza breaks, wording, colors, typography intent, and illustration placement. Never transliterate or rasterize text. Report any required font substitution or other format exception; return a structured failure if glyph coverage cannot be preserved."
       : "Faithfully reproduce the approved canonical BookDesign as an editable Canva presentation. Preserve page order, wording, line and stanza breaks, colors, typography intent, illustration placement, and editable text. Report every unavoidable format exception instead of silently redesigning.",
-    illustrations: requiredAssetIds.map((id) => illustrations.find((asset) => asset.assetId === id)!).map((asset) => ({
-      assetId: asset.assetId, role: asset.role, creatureId: asset.creatureId, relativePath: asset.relativePath, mimeType: asset.mimeType,
-      width: asset.width, height: asset.height, bytes: asset.bytes, sha256: asset.sha256, altText: asset.altText,
-      source: asset.source, provenance: asset.provenance, license: asset.license
-    })),
+    illustrations: requiredAssetIds.map((id) => illustrations.find((asset) => asset.assetId === id)!),
     pages: design.pages
-  };
+  });
 }
 
 export function recordCanvaResult(input: unknown, expected?: Pick<BookDesign, "sourceRevision" | "designRevision" | "illustrationSetDigest" | "pages">): CanvaState {

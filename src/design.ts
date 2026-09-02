@@ -6,7 +6,7 @@ import type { BookContent, IllustrationAsset } from "./domain.ts";
 const hexColorSchema = z.string().regex(/^#[0-9A-F]{6}$/u);
 const designStatusSchema = z.enum(["ready_for_review", "approved"]);
 
-const designThemeSchema = z.object({
+export const designThemeSchema = z.object({
   name: z.string().min(1).max(100),
   colors: z.object({
     primary: hexColorSchema,
@@ -53,6 +53,10 @@ const closingPageSchema = basePageSchema.extend({
   layout: z.literal("closing")
 });
 
+export const designPageSchema = z.union([coverPageSchema, sectionPageSchema, closingPageSchema]);
+export const presentationFormatProfileSchema = z.object({ size: z.literal("LAYOUT_WIDE"), orientation: z.literal("landscape") });
+export const designFormatExceptionSchema = z.object({ format: z.enum(["html", "docx", "pptx", "pdf", "canva"]), message: z.string().min(1) });
+
 export const bookDesignSchema = z.object({
   designVersion: z.literal("1.0"),
   language: z.enum(["en", "kn"]),
@@ -67,10 +71,10 @@ export const bookDesignSchema = z.object({
   theme: designThemeSchema,
   formatProfiles: z.object({
     document: z.object({ size: z.literal("A4"), orientation: z.literal("portrait") }),
-    presentation: z.object({ size: z.literal("LAYOUT_WIDE"), orientation: z.literal("landscape") })
+    presentation: presentationFormatProfileSchema
   }),
-  pages: z.array(z.union([coverPageSchema, sectionPageSchema, closingPageSchema])).min(4).max(100),
-  formatExceptions: z.array(z.object({ format: z.enum(["html", "docx", "pptx", "pdf", "canva"]), message: z.string().min(1) })).default([])
+  pages: z.array(designPageSchema).min(4).max(100),
+  formatExceptions: z.array(designFormatExceptionSchema).default([])
 }).superRefine((design, context) => {
   if (design.status === "approved" && (!design.approvedAt || !design.approvedBy)) {
     context.addIssue({ code: z.ZodIssueCode.custom, path: ["status"], message: "Approved design requires approval time and reviewer." });

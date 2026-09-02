@@ -44,6 +44,8 @@ const illustrations: IllustrationAsset[] = [
 const design = { ...buildBookDesign(content, illustrations, 4, 2), status: "approved" as const, approvedAt, approvedBy: "Reviewer" };
 const consented: CanvaState = {
   status: "consented",
+  readiness: "ready",
+  checkedAt: "2026-08-03T09:59:00.000Z",
   consentedAt: "2026-08-03T10:00:00.000Z",
   sourceRevision: 4,
   designRevision: 2,
@@ -78,8 +80,14 @@ describe("Canva readiness and handoff contract", () => {
       operation: "create_editable_design",
       mode: "faithful_canonical_reproduction",
       correlation: { projectId: "project-1", revision: 9 },
-      designRevision: 2
+      designRevision: 2,
+      authorization: {
+        readiness: "ready",
+        checkedAt: "2026-08-03T09:59:00.000Z",
+        consentedAt: "2026-08-03T10:00:00.000Z"
+      }
     });
+    expect(payload.illustrations).toEqual(illustrations);
     expect(payload.illustrations.map((asset) => asset.sha256)).toEqual(["a".repeat(64), "b".repeat(64)]);
     expect(payload.pages).toEqual(expect.arrayContaining([
       expect.objectContaining({ type: "cover", illustrationAssetId: "cover" }),
