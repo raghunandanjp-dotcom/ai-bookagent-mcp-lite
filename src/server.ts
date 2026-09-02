@@ -3,20 +3,16 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
 import { closingNoteCorrectionSchema, creatureSchema, interactiveBookRequestSchema, illustrationRoleSchema } from "./domain.ts";
-import { ingestCanvaHandoff } from "./canva-adapter.ts";
 import {
   acceptBookContent,
   acceptPrimaryOutput,
-  acceptCanvaResult,
   approveBookDesign,
   approveCreatureSelection,
-  consentToCanva,
   createPromptPackage,
   createIllustrationPromptPackage,
   createBookDesignPreview,
   deliverySummary,
   generateDocuments,
-  getCanvaHandoff,
   initializeProject,
   importProjectIllustration,
   importProjectCodeNativeIllustrationSet,
@@ -24,9 +20,7 @@ import {
   replaceClosingNote,
   replaceCreatureContent,
   reviewProjectIllustration,
-  selectCanvaDesign,
   reiterateAuthoringPrompt,
-  setCanvaCapability,
   updateCreatureSelection
 } from "./workflow.ts";
 import { loadProject } from "./project.ts";
@@ -254,89 +248,6 @@ server.registerTool(
     }
   },
   async ({ projectDir, creature, humanApprovedRhymeScheme }) => text(await replaceCreatureContent(projectDir, creature, humanApprovedRhymeScheme))
-);
-
-server.registerTool(
-  "check_canva_readiness",
-  {
-    description: "Record host-reported Canva setup and authorization readiness without sending book content.",
-    inputSchema: {
-      projectDir: z.string().min(1),
-      status: z.enum(["ready", "unavailable", "authorization_required"]),
-      connectorName: z.string().optional(),
-      toolName: z.string().optional()
-    }
-  },
-  async ({ projectDir, ...capability }) => text(await setCanvaCapability(projectDir, capability))
-);
-
-server.registerTool(
-  "confirm_canva_handoff",
-  {
-    description: "Persist explicit approval or decline before any content is handed to Canva.",
-    inputSchema: {
-      projectDir: z.string().min(1),
-      consent: z.boolean()
-    }
-  },
-  async ({ projectDir, consent }) => text(await consentToCanva(projectDir, consent))
-);
-
-server.registerTool(
-  "select_canva_design",
-  {
-    description: "Record the user's Canva design selection before requesting mutation-specific consent.",
-    inputSchema: {
-      projectDir: z.string().min(1),
-      designId: z.string().min(1),
-      title: z.string().min(1),
-      templateUrl: z.string().url().optional()
-    }
-  },
-  async ({ projectDir, designId, title, templateUrl }) =>
-    text(await selectCanvaDesign(projectDir, { designId, title, templateUrl }))
-);
-
-server.registerTool(
-  "prepare_canva_handoff",
-  {
-    description: "Return an adapter-neutral Canva payload after local delivery and consent; this tool never invokes Canva.",
-    inputSchema: { projectDir: z.string().min(1) }
-  },
-  async ({ projectDir }) => text(await getCanvaHandoff(projectDir))
-);
-
-server.registerTool(
-  "prepare_canva_import_artifact",
-  {
-    description: "Validate a faithful neutral handoff against the approved local BookDesign and checksum-bound assets, then create a private local HTML artifact for Canva's file-import connector. Redesign and substitution are rejected.",
-    inputSchema: {
-      projectDir: z.string().min(1),
-      handoff: z.unknown()
-    }
-  },
-  async ({ projectDir, handoff }) => text(await ingestCanvaHandoff(projectDir, handoff))
-);
-
-server.registerTool(
-  "record_canva_result",
-  {
-    description: "Persist either a structured connector failure or a validated Canva design result.",
-    inputSchema: {
-      projectDir: z.string().min(1),
-      outcome: z.enum(["success", "failed"]),
-      designId: z.string().min(1).optional(),
-      editUrl: z.string().url().optional(),
-      sourceRevision: z.number().int().positive().optional(),
-      designRevision: z.number().int().positive().optional(),
-      illustrationSetDigest: z.string().regex(/^[a-f0-9]{64}$/u).optional(),
-      pageCount: z.number().int().positive().optional(),
-      code: z.string().min(1).optional(),
-      message: z.string().min(1).optional(),
-      retryable: z.boolean().optional()
-    }
-  },
-  async ({ projectDir, ...result }) => text(await acceptCanvaResult(projectDir, result))
 );
 
 server.registerTool(
