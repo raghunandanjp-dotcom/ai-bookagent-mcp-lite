@@ -38,8 +38,9 @@ ai-bookagent canva import /absolute/path/to/book-project
 
 No token, client secret, authorization code, Authorization header, or API error payload is emitted in CLI/MCP output or recorded in project state. v1 uses a single OS-user vault record, not a plaintext settings file. It stores the client ID/secret and the current refresh token, refreshing and rotating it locally when Canva returns a replacement.
 
+- Windows is supported through the native Credential Manager API (`CredRead`, `CredWrite`, and `CredDelete`) invoked by a fixed, noninteractive PowerShell P/Invoke helper. The helper source contains no secret; values move only over its stdin pipe and are zeroed before its temporary unmanaged buffer is freed. PowerShell execution policy is not changed and `npm.ps1` is not used.
 - Linux is supported only when `secret-tool` from libsecret is present and usable. Secret values are supplied on standard input, never command arguments.
-- Windows and macOS are intentionally **not enabled in this build**: the package does not yet ship and exercise a native Credential Manager/Keychain bridge that can accept a secret without exposing it to command arguments. The CLI fails closed with `secure_storage_unavailable`; it does not substitute DPAPI files, Keychain command-line passwords, `.env`, or project-local secrets.
+- macOS is intentionally **not enabled in this build**: the package does not yet ship and exercise an equivalent native Keychain bridge that can accept a secret without exposing it to command arguments. The CLI fails closed with `secure_storage_unavailable`; it does not substitute Keychain command-line passwords, `.env`, or project-local secrets.
 - Unsupported systems, locked vaults, and absent vault utilities fail closed. They do not fall back to plaintext storage.
 
 `disconnect` deletes the local vault record. Revoke the integration/token in Canva's Developer Portal as well if a device is lost, an account changes, or a secret might be exposed; then run `configure` again. Local project files retain only the resulting design ID/edit URL and normal non-secret workflow metadata.

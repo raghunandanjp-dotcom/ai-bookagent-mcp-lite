@@ -7,6 +7,7 @@ import {
   canvaAuthorizationUrl,
   exchangeAuthorizationCode,
   importApprovedCanvaPptx,
+  windowsCredentialManagerScript,
   type CredentialVault
 } from "../src/canva-connect.ts";
 import { buildBookDesign } from "../src/design.ts";
@@ -82,8 +83,19 @@ describe("local Canva Connect", () => {
     expect(calls[0]!.stdin).toBe("do-not-leak");
   });
 
-  it("fails closed on platforms without the shipped native vault bridge", async () => {
-    const vault = new NativeCredentialVault("win32", async () => ({ exitCode: 2, stdout: "", stderr: "" }));
-    expect(await vault.available()).toBe(false);
+  it("uses a fixed Windows Credential Manager helper and sends credential JSON only on stdin", async () => {
+    const calls: Array<{ command: string; args: string[]; stdin?: string }> = [];
+    const vault = new NativeCredentialVault("win32", async (command, args, stdin) => {
+      calls.push({ command, args, stdin });
+      if (args.at(-1)?.includes("CredRead")) return { exitCode: 0, stdout: "", stderr: "" };
+      return { exitCode: 0, stdout: "stored", stderr: "" };
+    });
+    expect(await vault.available()).toBe(true);
+    await vault.set("secret that must not reach argv");
+    expect(calls[0]!.command).toMatch(/powershell/u);
+    expect(calls[1]!.args.join(" ")).not.toContain("secret that must not reach argv");
+    expect(calls[1]!.stdin).toBe(JSON.stringify({ value: "secret that must not reach argv" }));
+    expect(windowsCredentialManagerScript("set")).toContain("CredWrite");
+    expect(windowsCredentialManagerScript("set")).not.toContain("secret that must not reach argv");
   });
 });

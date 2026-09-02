@@ -14,7 +14,7 @@ Stable for the release candidate:
 - Existing PNG/JPEG artwork with provenance, license, dimensions, and checksum records
 - An HTML-first design review followed by local DOCX, PPTX, and PDF generation
 - Resumable project state, two creature-list regenerations, and two DOCX reworks
-- Optional, consent-gated advanced local Canva Connect import (Linux with libsecret in v1)
+- Optional, consent-gated advanced local Canva Connect import (Windows Credential Manager or Linux libsecret in v1)
 
 Experimental or externally gated:
 

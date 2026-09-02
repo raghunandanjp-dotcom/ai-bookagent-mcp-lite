@@ -106,24 +106,44 @@ export class NativeCredentialVault implements CredentialVault {
       const result = await this.runner("secret-tool", ["clear", "service", VAULT_SERVICE, "account", VAULT_ACCOUNT]);
       return result.exitCode === 1 ? { ...result, exitCode: 44 } : result;
     }
-    // This v1 build deliberately fails closed on Windows and macOS until a native
-    // keychain bridge is packaged and exercised on those platforms. It never falls
-    // back to DPAPI files, Keychain CLI argv values, or a plaintext .env file.
-    const script = this.platform === "win32" ? windowsVaultScript(operation) : this.platform === "darwin" ? macosVaultScript(operation) : undefined;
+    // The PowerShell program is fixed source; credential JSON travels through the
+    // child's stdin pipe, never an argv value. macOS still deliberately fails
+    // closed until its equivalent native Keychain bridge is shipped and exercised.
+    const script = this.platform === "win32" ? windowsCredentialManagerScript(operation) : this.platform === "darwin" ? macosVaultScript(operation) : undefined;
     if (!script) return { exitCode: 2, stdout: "", stderr: "unsupported platform" };
     const shell = this.platform === "win32" ? "powershell.exe" : "/usr/bin/osascript";
     const args = this.platform === "win32"
       ? ["-NoProfile", "-NonInteractive", "-Command", script]
       : ["-l", "JavaScript", "-e", script];
-    const result = await this.runner(shell, args, value === undefined ? undefined : JSON.stringify({ value }));
-    return result.exitCode === 1 && operation !== "probe" ? { ...result, exitCode: 44 } : result;
+    return this.runner(shell, args, value === undefined ? undefined : JSON.stringify({ value }));
   }
 }
 
 // Windows Credential Manager via CredRead/CredWrite. No credential value appears in args.
-function windowsVaultScript(operation: string): string {
-  void operation;
-  return "exit 2";
+/** Fixed helper source; it contains no credential values. */
+export function windowsCredentialManagerScript(operation: "probe" | "get" | "set" | "remove"): string {
+  const common = `$ErrorActionPreference='Stop'; Add-Type @'
+using System;
+using System.Runtime.InteropServices;
+public static class BookAgentCredMan {
+  [StructLayout(LayoutKind.Sequential, CharSet=CharSet.Unicode)] public struct CREDENTIAL {
+    public UInt32 Flags; public UInt32 Type; public string TargetName; public string Comment;
+    public System.Runtime.InteropServices.ComTypes.FILETIME LastWritten; public UInt32 CredentialBlobSize; public IntPtr CredentialBlob;
+    public UInt32 Persist; public UInt32 AttributeCount; public IntPtr Attributes;
+    public string TargetAlias; public string UserName;
+  }
+  [DllImport("Advapi32.dll", CharSet=CharSet.Unicode, SetLastError=true)] public static extern bool CredRead(string target, UInt32 type, UInt32 flags, out IntPtr credential);
+  [DllImport("Advapi32.dll", CharSet=CharSet.Unicode, SetLastError=true)] public static extern bool CredWrite(ref CREDENTIAL credential, UInt32 flags);
+  [DllImport("Advapi32.dll", SetLastError=true)] public static extern void CredFree(IntPtr credential);
+  [DllImport("Advapi32.dll", CharSet=CharSet.Unicode, SetLastError=true)] public static extern bool CredDelete(string target, UInt32 type, UInt32 flags);
+}
+'@;
+$target='AI Book Agent MCP Lite Canva Connect/default';
+`;
+  if (operation === "probe") return `${common}$ptr=[IntPtr]::Zero; [void][BookAgentCredMan]::CredRead($target,1,0,[ref]$ptr); if($ptr -ne [IntPtr]::Zero){[BookAgentCredMan]::CredFree($ptr)}; exit 0`;
+  if (operation === "get") return `${common}$ptr=[IntPtr]::Zero; if(-not [BookAgentCredMan]::CredRead($target,1,0,[ref]$ptr)){ if([Runtime.InteropServices.Marshal]::GetLastWin32Error() -eq 1168){exit 44}; exit 2 }; try { $credential=[Runtime.InteropServices.Marshal]::PtrToStructure($ptr,[type][BookAgentCredMan+CREDENTIAL]); $bytes=New-Object byte[] ([int]$credential.CredentialBlobSize); if($bytes.Length -gt 0){[Runtime.InteropServices.Marshal]::Copy($credential.CredentialBlob,$bytes,0,$bytes.Length)}; [Console]::Out.Write([Text.Encoding]::UTF8.GetString($bytes)); [Array]::Clear($bytes,0,$bytes.Length) } finally { [BookAgentCredMan]::CredFree($ptr) }`;
+  if (operation === "set") return `${common}$raw=[Console]::In.ReadToEnd(); $payload=$raw | ConvertFrom-Json; $bytes=[Text.Encoding]::UTF8.GetBytes([string]$payload.value); $length=$bytes.Length; if($length -eq 0){exit 2}; $blob=[Runtime.InteropServices.Marshal]::AllocCoTaskMem($length); try { [Runtime.InteropServices.Marshal]::Copy($bytes,0,$blob,$length); $credential=New-Object BookAgentCredMan+CREDENTIAL; $credential.Type=1; $credential.TargetName=$target; $credential.CredentialBlobSize=[uint32]$length; $credential.CredentialBlob=$blob; $credential.Persist=2; $credential.UserName='AI Book Agent MCP Lite'; if(-not [BookAgentCredMan]::CredWrite([ref]$credential,0)){exit 2} } finally { [Array]::Clear($bytes,0,$length); if($blob -ne [IntPtr]::Zero){ $zero=New-Object byte[] $length; [Runtime.InteropServices.Marshal]::Copy($zero,0,$blob,$length); [Runtime.InteropServices.Marshal]::FreeCoTaskMem($blob) } }`;
+  return `${common}if(-not [BookAgentCredMan]::CredDelete($target,1,0)){ if([Runtime.InteropServices.Marshal]::GetLastWin32Error() -eq 1168){exit 44}; exit 2 }`;
 }
 
 // JXA can use the Security framework, but this repository does not ship a native bridge.

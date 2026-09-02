@@ -34,7 +34,7 @@ Claude output is untrusted input until schema and coverage validation succeeds. 
 
 MCP has no Canva credential or import tool. The optional local CLI performs the direct API call only after explicit consent and only from a freshly generated, checksum-bound PPTX. It does not accept a user PPTX, public URL, template, redesign prompt, or host file reference.
 
-OAuth credentials are handled only by the advanced local CLI and never persist in a project, MCP payload, log, or output. The supported Linux implementation uses libsecret; unsupported vault environments fail closed.
+OAuth credentials are handled only by the advanced local CLI and never persist in a project, MCP payload, log, or output. Windows uses Credential Manager through a fixed PowerShell P/Invoke helper; Linux uses libsecret. Unsupported vault environments fail closed.
 
 ## Project state
 
