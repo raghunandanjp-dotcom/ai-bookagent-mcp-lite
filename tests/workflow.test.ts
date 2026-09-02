@@ -554,8 +554,8 @@ describe("persisted workflow bookkeeping", () => {
 
     const completed = await acceptCanvaResult(projectDir, {
       outcome: "success",
-      designId: "design-1",
-      editUrl: "https://www.canva.com/design/design-1/edit",
+      designId: "DAHUBu0fqec",
+      editUrl: "https://www.canva.com/d/HCQkt2xf5AzH_rx",
       sourceRevision: failed.sourceRevision,
       designRevision: failed.design!.designRevision,
       illustrationSetDigest: failed.design!.illustrationSetDigest,
@@ -564,7 +564,12 @@ describe("persisted workflow bookkeeping", () => {
     expect(completed).toMatchObject({
       revision: 11,
       stage: "canva_complete",
-      canva: { status: "complete" }
+      canva: {
+        status: "complete",
+        designId: "DAHUBu0fqec",
+        editUrl: "https://www.canva.com/design/DAHUBu0fqec/edit",
+        connectorUrl: "https://www.canva.com/d/HCQkt2xf5AzH_rx"
+      }
     });
     expect(completed.canva.failure).toBeUndefined();
     expect((await loadProject(projectDir)).revision).toBe(11);

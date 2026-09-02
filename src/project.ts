@@ -97,6 +97,7 @@ export interface CanvaState {
   declinedAt?: string;
   designId?: string;
   editUrl?: string;
+  connectorUrl?: string;
   failure?: { code: string; message: string; retryable: boolean; failedAt: string };
   selection?: CanvaDesignSelection;
   sourceRevision?: number;
@@ -114,6 +115,7 @@ const canvaStateSchema = z.object({
   declinedAt: z.string().datetime().optional(),
   designId: z.string().min(1).optional(),
   editUrl: z.string().url().optional(),
+  connectorUrl: z.string().url().optional(),
   failure: z.object({
     code: z.string().min(1),
     message: z.string().min(1),

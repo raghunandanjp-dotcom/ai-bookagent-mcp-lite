@@ -73,14 +73,27 @@ export type CanvaHandoff = z.infer<typeof canvaHandoffSchema>;
 
 const designIdSchema = z.string().trim().min(1).regex(/^[A-Za-z0-9_-]+$/, "The Canva design ID contains unsupported characters.");
 
+function isTrustedCanvaUrl(url: URL): boolean {
+  const hostname = url.hostname.toLocaleLowerCase("en");
+  return url.protocol === "https:" && !url.username && !url.password && (!url.port || url.port === "443") &&
+    (hostname === "canva.com" || hostname.endsWith(".canva.com"));
+}
+
 function isMatchingCanvaEditUrl(value: string, designId: string): boolean {
   const url = new URL(value);
-  const hostname = url.hostname.toLocaleLowerCase("en");
-  if (url.protocol !== "https:" || url.username || url.password || (url.port && url.port !== "443")) return false;
-  if (hostname !== "canva.com" && !hostname.endsWith(".canva.com")) return false;
+  if (!isTrustedCanvaUrl(url)) return false;
   const match = url.pathname.match(/^\/design\/([^/]+)\/edit\/?$/u);
   if (!match) return false;
   try { return decodeURIComponent(match[1]) === designId; } catch { return false; }
+}
+
+function isCanvaConnectorShortUrl(value: string): boolean {
+  const url = new URL(value);
+  return isTrustedCanvaUrl(url) && /^\/d\/[A-Za-z0-9_-]+\/?$/u.test(url.pathname);
+}
+
+function canonicalCanvaEditUrl(designId: string): string {
+  return `https://www.canva.com/design/${designId}/edit`;
 }
 
 export const canvaResultSchema = z.discriminatedUnion("outcome", [
@@ -100,8 +113,8 @@ export const canvaResultSchema = z.discriminatedUnion("outcome", [
     retryable: z.boolean()
   })
 ]).superRefine((result, context) => {
-  if (result.outcome === "success" && !isMatchingCanvaEditUrl(result.editUrl, result.designId)) {
-    context.addIssue({ code: z.ZodIssueCode.custom, path: ["editUrl"], message: "The edit URL must be an HTTPS Canva design URL whose path matches designId." });
+  if (result.outcome === "success" && !isMatchingCanvaEditUrl(result.editUrl, result.designId) && !isCanvaConnectorShortUrl(result.editUrl)) {
+    context.addIssue({ code: z.ZodIssueCode.custom, path: ["editUrl"], message: "The connector URL must be either a matching HTTPS Canva edit URL or a Canva-owned /d/{token} short URL." });
   }
 });
 
@@ -204,5 +217,13 @@ export function recordCanvaResult(input: unknown, expected?: Pick<BookDesign, "s
   if (expected && (result.sourceRevision !== expected.sourceRevision || result.designRevision !== expected.designRevision || result.illustrationSetDigest !== expected.illustrationSetDigest || result.pageCount !== expected.pages.length)) {
     throw new Error("Canva result parity metadata does not match the approved canonical BookDesign.");
   }
-  return { status: "complete", designId: result.designId, editUrl: result.editUrl };
+  if (isMatchingCanvaEditUrl(result.editUrl, result.designId)) {
+    return { status: "complete", designId: result.designId, editUrl: result.editUrl };
+  }
+  return {
+    status: "complete",
+    designId: result.designId,
+    editUrl: canonicalCanvaEditUrl(result.designId),
+    connectorUrl: result.editUrl
+  };
 }

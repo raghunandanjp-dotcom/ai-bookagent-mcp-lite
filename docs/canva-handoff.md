@@ -43,7 +43,7 @@ A declined handoff remains a completed local delivery and can be restarted with 
 { "outcome": "failed", "code": "timeout", "message": "Connector timed out", "retryable": true }
 ```
 
-Success URLs must use HTTPS on a Canva-owned hostname, contain no credentials, use a Canva `/design/{id}` edit path, and contain the same design ID as the result. The returned source/design/digest/page metadata must exactly match the approved `BookDesign`. URL existence and account access can only be established by the authorized connector or by opening it.
+Success URLs must use HTTPS on a Canva-owned hostname and contain no credentials. Canonical `/design/{id}/edit` paths must contain the same design ID as the result. The private-file connector may return a `/d/{token}` short URL whose token does not encode that ID; only this exact Canva-owned short-link shape is accepted, retained as `connectorUrl`, and normalized to `/design/{designId}/edit` using the separately validated connector design ID. Arbitrary Canva paths and mismatched canonical paths remain rejected. The returned source/design/digest/page metadata must exactly match the approved `BookDesign`. URL existence and account access can only be established by the authorized connector or by opening it.
 
 Changing canonical content, illustrations, or design invalidates consent. Canva is never the source of truth for book text. A template/design identifier is required only when the user explicitly opts into the redesign mode.
 

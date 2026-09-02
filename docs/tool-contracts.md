@@ -108,7 +108,7 @@ Accepts the neutral handoff returned by `prepare_canva_handoff`, revalidates it 
 
 ## `record_canva_result`
 
-Accepts a discriminated `success` or `failed` result. Failures persist a code, safe message, retryability, and timestamp. Success requires a genuine matching HTTPS Canva design URL and parity metadata matching the approved source revision, design revision, illustration-set digest, and page count.
+Accepts a discriminated `success` or `failed` result. Failures persist a code, safe message, retryability, and timestamp. Success requires parity metadata matching the approved source revision, design revision, illustration-set digest, and page count. A canonical HTTPS Canva `/design/{designId}/edit` URL is retained unchanged. The private-file connector may instead return a Canva-owned `/d/{token}` short URL alongside a separate design ID; that exact narrow shape is retained as `connectorUrl` while the validated design ID is used to form the canonical edit URL. Other hosts, paths, credentials, protocols, and mismatched canonical design paths remain rejected.
 
 ## `get_delivery_summary`
 

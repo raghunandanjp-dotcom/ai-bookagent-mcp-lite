@@ -150,13 +150,34 @@ describe("Canva connector result validation", () => {
     });
   });
 
+  it("normalizes the connector's Canva short URL using its separately validated design ID", () => {
+    expect(recordCanvaResult({
+      outcome: "success",
+      designId: "DAHUBu0fqec",
+      editUrl: "https://www.canva.com/d/HCQkt2xf5AzH_rx",
+      sourceRevision: 4,
+      designRevision: 2,
+      illustrationSetDigest: design.illustrationSetDigest,
+      pageCount: design.pages.length
+    }, design)).toEqual({
+      status: "complete",
+      designId: "DAHUBu0fqec",
+      editUrl: "https://www.canva.com/design/DAHUBu0fqec/edit",
+      connectorUrl: "https://www.canva.com/d/HCQkt2xf5AzH_rx"
+    });
+  });
+
   it.each([
     "http://www.canva.com/design/DAGabc/edit",
     "https://canva.example/design/DAGabc/edit",
     "https://user:secret@www.canva.com/design/DAGabc/edit",
     "https://www.canva.com/templates/DAGabc",
     "https://www.canva.com/design/DAGabc",
-    "https://www.canva.com/design/other/edit"
+    "https://www.canva.com/design/other/edit",
+    "https://canva.example/d/HCQkt2xf5AzH_rx",
+    "https://user:secret@www.canva.com/d/HCQkt2xf5AzH_rx",
+    "http://www.canva.com/d/HCQkt2xf5AzH_rx",
+    "https://www.canva.com/d/"
   ])("rejects a non-genuine or mismatched URL: %s", (editUrl) => {
     expect(() => recordCanvaResult({ outcome: "success", designId: "DAGabc", editUrl })).toThrow();
   });
