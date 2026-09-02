@@ -44,6 +44,8 @@ const illustrations: IllustrationAsset[] = [
 const design = { ...buildBookDesign(content, illustrations, 4, 2), status: "approved" as const, approvedAt, approvedBy: "Reviewer" };
 const consented: CanvaState = {
   status: "consented",
+  readiness: "ready",
+  checkedAt: "2026-08-03T09:59:00.000Z",
   consentedAt: "2026-08-03T10:00:00.000Z",
   sourceRevision: 4,
   designRevision: 2,
@@ -78,8 +80,14 @@ describe("Canva readiness and handoff contract", () => {
       operation: "create_editable_design",
       mode: "faithful_canonical_reproduction",
       correlation: { projectId: "project-1", revision: 9 },
-      designRevision: 2
+      designRevision: 2,
+      authorization: {
+        readiness: "ready",
+        checkedAt: "2026-08-03T09:59:00.000Z",
+        consentedAt: "2026-08-03T10:00:00.000Z"
+      }
     });
+    expect(payload.illustrations).toEqual(illustrations);
     expect(payload.illustrations.map((asset) => asset.sha256)).toEqual(["a".repeat(64), "b".repeat(64)]);
     expect(payload.pages).toEqual(expect.arrayContaining([
       expect.objectContaining({ type: "cover", illustrationAssetId: "cover" }),
@@ -142,13 +150,34 @@ describe("Canva connector result validation", () => {
     });
   });
 
+  it("normalizes the connector's Canva short URL using its separately validated design ID", () => {
+    expect(recordCanvaResult({
+      outcome: "success",
+      designId: "DAHUBu0fqec",
+      editUrl: "https://www.canva.com/d/HCQkt2xf5AzH_rx",
+      sourceRevision: 4,
+      designRevision: 2,
+      illustrationSetDigest: design.illustrationSetDigest,
+      pageCount: design.pages.length
+    }, design)).toEqual({
+      status: "complete",
+      designId: "DAHUBu0fqec",
+      editUrl: "https://www.canva.com/design/DAHUBu0fqec/edit",
+      connectorUrl: "https://www.canva.com/d/HCQkt2xf5AzH_rx"
+    });
+  });
+
   it.each([
     "http://www.canva.com/design/DAGabc/edit",
     "https://canva.example/design/DAGabc/edit",
     "https://user:secret@www.canva.com/design/DAGabc/edit",
     "https://www.canva.com/templates/DAGabc",
     "https://www.canva.com/design/DAGabc",
-    "https://www.canva.com/design/other/edit"
+    "https://www.canva.com/design/other/edit",
+    "https://canva.example/d/HCQkt2xf5AzH_rx",
+    "https://user:secret@www.canva.com/d/HCQkt2xf5AzH_rx",
+    "http://www.canva.com/d/HCQkt2xf5AzH_rx",
+    "https://www.canva.com/d/"
   ])("rejects a non-genuine or mismatched URL: %s", (editUrl) => {
     expect(() => recordCanvaResult({ outcome: "success", designId: "DAGabc", editUrl })).toThrow();
   });

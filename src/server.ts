@@ -3,6 +3,7 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
 import { closingNoteCorrectionSchema, creatureSchema, interactiveBookRequestSchema, illustrationRoleSchema } from "./domain.ts";
+import { ingestCanvaHandoff } from "./canva-adapter.ts";
 import {
   acceptBookContent,
   acceptPrimaryOutput,
@@ -303,6 +304,18 @@ server.registerTool(
     inputSchema: { projectDir: z.string().min(1) }
   },
   async ({ projectDir }) => text(await getCanvaHandoff(projectDir))
+);
+
+server.registerTool(
+  "prepare_canva_import_artifact",
+  {
+    description: "Validate a faithful neutral handoff against the approved local BookDesign and checksum-bound assets, then create a private local HTML artifact for Canva's file-import connector. Redesign and substitution are rejected.",
+    inputSchema: {
+      projectDir: z.string().min(1),
+      handoff: z.unknown()
+    }
+  },
+  async ({ projectDir, handoff }) => text(await ingestCanvaHandoff(projectDir, handoff))
 );
 
 server.registerTool(
