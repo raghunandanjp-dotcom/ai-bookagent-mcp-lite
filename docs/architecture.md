@@ -7,7 +7,7 @@
 3. Canonical HTML-first design review.
 4. DOCX-first delivery and explicit acceptance.
 5. Optional PPTX/PDF only after current DOCX acceptance.
-6. Faithful Canva reproduction with explicit consent; template redesign is optional.
+6. Optional advanced local Canva Connect binary import with explicit per-book consent.
 7. Portable, resumable, versioned project packages.
 
 ## Components
@@ -22,26 +22,25 @@
 - `svg-illustrations.ts`: constrained SVG validation, exact-set batching, local `resvg` rasterization, and code-native provenance.
 - `design.ts`: canonical page plan, design/source/illustration revision binding, and local HTML preview rendering.
 - `exporters.ts`: DOCX-first export orchestration plus deterministic illustrated DOCX, editable age-profiled illustrated PPTX, and fixed-page illustrated PDF creation. Optional failures are isolated from successful artifacts.
-- `canva.ts`: readiness, consent, handoff, and URL validation.
+- `canva.ts`: persisted Canva result and URL validation.
+- `canva-connect.ts`: local-only OAuth PKCE, fail-closed OS-vault boundary, canonical-PPTX regeneration, and direct binary import.
 - `workflow.ts`: stateful orchestration.
 - `server.ts`: MCP tools.
 - `cli.ts`: local testing and automation.
 
 ## Trust boundaries
 
-Claude output is untrusted input until schema and coverage validation succeeds. User-provided reference material is placed inside a data-only delimiter. Canva connector results are untrusted until their discriminated result schema, design identifier, HTTPS Canva design path, and matching URL identifier validate.
+Claude output is untrusted input until schema and coverage validation succeeds. User-provided reference material is placed inside a data-only delimiter. Canva API results are untrusted until their design identifier, HTTPS Canva edit path, and matching URL identifier validate.
 
-The core has no Canva SDK or tool-name dependency. It emits a neutral handoff contract; the host-owned adapter handles connector discovery, authorization, invocation, and translation back to the neutral success/failure result.
+MCP has no Canva credential or import tool. The optional local CLI performs the direct API call only after explicit consent and only from a freshly generated, checksum-bound PPTX. It does not accept a user PPTX, public URL, template, redesign prompt, or host file reference.
 
-OAuth credentials are never handled or stored by this project.
+OAuth credentials are handled only by the advanced local CLI and never persist in a project, MCP payload, log, or output. Windows uses Credential Manager through a fixed PowerShell P/Invoke helper; Linux uses libsecret. Unsupported vault environments fail closed.
 
 ## Project state
 
 The manifest stores bookkeeping `revision`, canonical `sourceRevision`, versioned `BookDesign`, its `designRevision`, and an illustration-set digest, plus request, selection history, content, illustration records, output checksums, DOCX acceptance, rework count, and Canva state. Exports retain all three canonical bindings, so older artifacts are stale rather than silently current.
 
-The HTML preview is reviewed before any document export. One approval covers the complete page plan and exact illustration set. The DOCX primary output is then reviewed before secondary work begins. Up to two reworks may replace content; each increments `sourceRevision`, clears acceptance, refreshes the HTML design preview, and requires new design approval before DOCX regeneration. Canva is available only for an accepted DOCX bound to the approved design. Template selection is optional and explicitly requests redesign.
-
-Canva readiness distinguishes missing setup from missing authorization. Declines and connector failures are persisted. Retryable failures retain consent only for the unchanged selected design and source revision; rechecking readiness or changing canonical inputs returns the workflow to a fresh consent boundary.
+The HTML preview is reviewed before any document export. One approval covers the complete page plan and exact illustration set. The DOCX primary output is then reviewed before secondary work begins. Up to two reworks may replace content; each increments `sourceRevision`, clears acceptance, refreshes the HTML design preview, and requires new design approval before DOCX regeneration. Local Canva Connect is available only for an accepted DOCX bound to the approved design. Any changed bound value requires new consent.
 
 DOCX is the blocking local artifact. Its logical page sequence is one cover, three explicit pages per creature (poem, fun fact, activity), and an optional closing page. Validation, delivery summaries, and the exporter share this page-count contract. The exporter writes a temporary package before publishing the final filename, preserves source order and poem stanza/line boundaries, and records a digest only after publication.
 
@@ -57,6 +56,6 @@ Illustration prompts are production metadata and never enter reader-facing expor
 
 ## Future extensions
 
-The MVP implements only creature poetry activity books. Independent stories, connected narratives, other book types, direct model providers, and native Canva automation remain versioned future extensions.
+The MVP implements only creature poetry activity books. Independent stories, connected narratives, other book types, direct model providers, and a general-user hosted Canva integration remain versioned future extensions.
 
 PPTX reliability is split into deterministic OOXML inspection in the automated test suite and optional local rendering with LibreOffice and Poppler. Structural tests are required in CI; rendered visual review covers representative 1-, 5-, 11-, and 20-creature decks without committing platform-dependent bitmap baselines.

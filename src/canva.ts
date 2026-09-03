@@ -83,8 +83,10 @@ function isMatchingCanvaEditUrl(value: string, designId: string): boolean {
   const url = new URL(value);
   if (!isTrustedCanvaUrl(url)) return false;
   const match = url.pathname.match(/^\/design\/([^/]+)\/edit\/?$/u);
-  if (!match) return false;
-  try { return decodeURIComponent(match[1]) === designId; } catch { return false; }
+  if (match) {
+    try { return decodeURIComponent(match[1]) === designId; } catch { return false; }
+  }
+  return /^\/api\/design\/[^/]+\/edit\/?$/u.test(url.pathname);
 }
 
 function isCanvaConnectorShortUrl(value: string): boolean {
