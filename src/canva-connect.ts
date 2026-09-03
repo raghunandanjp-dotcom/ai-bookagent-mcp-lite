@@ -1,6 +1,6 @@
 import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { createServer } from "node:http";
-import { mkdir, rm } from "node:fs/promises";
+import { mkdir, rename, rm } from "node:fs/promises";
 import path from "node:path";
 import { spawn } from "node:child_process";
 import { exportPptx } from "./exporters.ts";
@@ -443,41 +443,58 @@ export function trustedEditUrl(value: unknown, designId: string): value is strin
   } catch { return false; }
 }
 
-function pendingImportMatches(project: BookProject, design: NonNullable<BookProject["design"]>, digest: { sha256: string }, pageCount: number): boolean {
+function pendingImportMatches(project: BookProject, design: NonNullable<BookProject["design"]>, pageCount: number): boolean {
   const pending = project.canva.pendingImport;
   return Boolean(pending && pending.sourceRevision === project.sourceRevision && pending.designRevision === design.designRevision &&
-    pending.illustrationSetDigest === design.illustrationSetDigest && pending.pageCount === pageCount && pending.pptxSha256 === digest.sha256);
+    pending.illustrationSetDigest === design.illustrationSetDigest && pending.pageCount === pageCount && pending.relativePath);
+}
+
+function pendingImportPath(jobId: string): string {
+  return path.posix.join("canva", "pending-imports", `${createHash("sha256").update(jobId).digest("hex")}.pptx`);
 }
 
 export interface CanvaImportSuccess { outcome: "success"; designId: string; editUrl: string; sourceRevision: number; designRevision: number; illustrationSetDigest: string; pageCount: number; pptxSha256: string; }
 export interface CanvaImportFailure { outcome: "failed"; code: CanvaConnectFailureCode; message: string; retryable: boolean; }
 
 export async function importApprovedCanvaPptx(projectDir: string, vault: CredentialVault = new NativeCredentialVault(), fetcher: FetchLike = fetch, pause: (ms: number) => Promise<void> = (ms) => new Promise((resolve) => setTimeout(resolve, ms))): Promise<CanvaImportSuccess | CanvaImportFailure> {
-  let pptxPath: string | undefined;
+  let temporaryPptxPath: string | undefined;
   try {
     const project = await loadProject(projectDir);
     currentProjectPptxIsAllowed(project);
     const design = project.design!;
-    const illustrations = await resolveApprovedIllustrations(projectDir, project.content!, project.illustrations);
-    const outputDir = resolveInside(projectDir, path.join("canva", `import-${randomUUID()}`));
-    await mkdir(outputDir, { recursive: true });
-    const record = await exportPptx(project.content!, outputDir, illustrations, { ageBand: project.content!.effectiveAgeBand, language: project.request.language });
-    pptxPath = path.join(outputDir, record.relativePath);
-    const digest = await fileDigest(pptxPath);
     const pageCount = design.pages.length;
-    if (digest.sha256 !== record.sha256 || digest.bytes !== record.bytes || pageCount !== 1 + project.content!.creatures.length * 3 + (project.content!.closingNote ? 1 : 0)) throw new CanvaConnectError("canonical_source_mismatch", false, "The generated PPTX no longer matches the approved canonical page plan.");
+    if (pageCount !== 1 + project.content!.creatures.length * 3 + (project.content!.closingNote ? 1 : 0)) throw new CanvaConnectError("canonical_source_mismatch", false, "The approved canonical page plan is no longer current.");
 
+    let digest: { sha256: string; bytes: number };
+    let pending = project.canva.pendingImport;
     let jobId: string;
-    if (project.canva.pendingImport) {
-      if (!pendingImportMatches(project, design, digest, pageCount)) throw new CanvaConnectError("canonical_source_mismatch", false, "The pending Canva import is bound to a different approved project state and cannot be resumed.");
-      jobId = project.canva.pendingImport.jobId;
+    if (pending) {
+      if (!pendingImportMatches(project, design, pageCount)) throw new CanvaConnectError("canonical_source_mismatch", false, "The pending Canva import is bound to a different approved project state and cannot be resumed.");
+      const persistedPath = resolveInside(projectDir, pending.relativePath!);
+      digest = await fileDigest(persistedPath);
+      if (digest.sha256 !== pending.pptxSha256 || digest.bytes < 1) throw new CanvaConnectError("canonical_source_mismatch", false, "The retained Canva import source does not match its recorded SHA-256.");
+      jobId = pending.jobId;
     } else {
+      const illustrations = await resolveApprovedIllustrations(projectDir, project.content!, project.illustrations);
+      const outputDir = resolveInside(projectDir, path.join("canva", `import-${randomUUID()}`));
+      await mkdir(outputDir, { recursive: true });
+      const record = await exportPptx(project.content!, outputDir, illustrations, { ageBand: project.content!.effectiveAgeBand, language: project.request.language });
+      temporaryPptxPath = path.join(outputDir, record.relativePath);
+      digest = await fileDigest(temporaryPptxPath);
+      if (digest.sha256 !== record.sha256 || digest.bytes !== record.bytes) throw new CanvaConnectError("canonical_source_mismatch", false, "The generated PPTX no longer matches the approved canonical page plan.");
+
       const token = await accessToken(vault, fetcher);
-      const started = await fetcher(IMPORT_URL, { method: "POST", headers: { authorization: `Bearer ${token}`, "content-type": "application/octet-stream", "import-metadata": JSON.stringify({ title_base64: Buffer.from(project.content!.title).toString("base64"), mime_type: "application/vnd.openxmlformats-officedocument.presentationml.presentation" }) }, body: await (await import("node:fs/promises")).readFile(pptxPath) });
+      const started = await fetcher(IMPORT_URL, { method: "POST", headers: { authorization: `Bearer ${token}`, "content-type": "application/octet-stream", "import-metadata": JSON.stringify({ title_base64: Buffer.from(project.content!.title).toString("base64"), mime_type: "application/vnd.openxmlformats-officedocument.presentationml.presentation" }) }, body: await (await import("node:fs/promises")).readFile(temporaryPptxPath) });
       const startPayload = await started.json().catch(() => ({})) as { job?: { id?: unknown } };
       if (!started.ok || typeof startPayload.job?.id !== "string" || !startPayload.job.id) throw new CanvaConnectError("import_rejected", true, "Canva did not accept the approved PPTX import.");
       jobId = startPayload.job.id;
-      await saveProject(projectDir, { ...project, revision: project.revision + 1, canva: { ...project.canva, pendingImport: { jobId, sourceRevision: project.sourceRevision, designRevision: design.designRevision, illustrationSetDigest: design.illustrationSetDigest, pageCount, pptxSha256: digest.sha256, startedAt: new Date().toISOString() } } });
+      const relativePath = pendingImportPath(jobId);
+      const persistedPath = resolveInside(projectDir, relativePath);
+      await mkdir(path.dirname(persistedPath), { recursive: true });
+      await rename(temporaryPptxPath, persistedPath);
+      temporaryPptxPath = undefined;
+      pending = { jobId, sourceRevision: project.sourceRevision, designRevision: design.designRevision, illustrationSetDigest: design.illustrationSetDigest, pageCount, pptxSha256: digest.sha256, relativePath, startedAt: new Date().toISOString() };
+      await saveProject(projectDir, { ...project, revision: project.revision + 1, canva: { ...project.canva, pendingImport: pending } });
     }
 
     const token = await accessToken(vault, fetcher);
@@ -488,6 +505,7 @@ export async function importApprovedCanvaPptx(projectDir: string, vault: Credent
       if (!response.ok) throw new CanvaConnectError("import_rejected", true, "Canva import status could not be read.");
       if (status.job?.status === "failed") {
         await saveProject(projectDir, { ...project, revision: project.revision + 2, canva: { ...project.canva, pendingImport: undefined } });
+        await rm(resolveInside(projectDir, pending!.relativePath!), { force: true });
         throw new CanvaConnectError("import_rejected", false, "Canva could not import the approved PPTX.");
       }
       if (status.job?.status !== "success") continue;
@@ -496,6 +514,7 @@ export async function importApprovedCanvaPptx(projectDir: string, vault: Credent
       const result: CanvaImportSuccess = { outcome: "success", designId: imported.id, editUrl: imported.urls.edit_url, sourceRevision: project.sourceRevision, designRevision: design.designRevision, illustrationSetDigest: design.illustrationSetDigest, pageCount, pptxSha256: digest.sha256 };
       const state = recordCanvaResult(result, design);
       await saveProject(projectDir, { ...project, revision: project.revision + 2, stage: "canva_complete", canva: { ...project.canva, ...state, pendingImport: undefined, sourceRevision: project.sourceRevision, designRevision: design.designRevision, illustrationSetDigest: design.illustrationSetDigest } });
+      await rm(resolveInside(projectDir, pending!.relativePath!), { force: true });
       return result;
     }
     throw new CanvaConnectError("import_timeout", true, "Canva import did not finish in the local wait window.");
@@ -503,7 +522,7 @@ export async function importApprovedCanvaPptx(projectDir: string, vault: Credent
     if (error instanceof CanvaConnectError) return { outcome: "failed", code: error.code, message: error.message, retryable: error.retryable };
     return { outcome: "failed", code: "local_pptx_unavailable", message: "The approved local PPTX could not be generated or read.", retryable: true };
   } finally {
-    if (pptxPath) await rm(path.dirname(pptxPath), { recursive: true, force: true });
+    if (temporaryPptxPath) await rm(path.dirname(temporaryPptxPath), { recursive: true, force: true });
   }
 }
 

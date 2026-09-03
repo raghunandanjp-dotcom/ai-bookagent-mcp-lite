@@ -88,6 +88,7 @@ export interface CanvaPendingImport {
   illustrationSetDigest: string;
   pageCount: number;
   pptxSha256: string;
+  relativePath?: string;
   startedAt: string;
 }
 
@@ -148,6 +149,7 @@ const canvaStateSchema = z.object({
     illustrationSetDigest: z.string().regex(/^[a-f0-9]{64}$/u),
     pageCount: z.number().int().positive(),
     pptxSha256: z.string().regex(/^[a-f0-9]{64}$/u),
+    relativePath: z.string().regex(/^canva\/pending-imports\/[a-f0-9]{64}\.pptx$/u).optional(),
     startedAt: z.string().datetime()
   }).optional(),
   sourceRevision: z.number().int().positive().optional(),
