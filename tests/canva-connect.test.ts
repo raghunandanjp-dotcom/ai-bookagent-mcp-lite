@@ -4,12 +4,17 @@ import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import {
   NativeCredentialVault,
+  WINDOWS_CREDENTIAL_BLOB_BYTES,
+  WINDOWS_VAULT_MAX_BYTES,
   canvaAuthorizationUrl,
+  chunkWindowsVaultValue,
   classifyCanvaTokenFailure,
   exchangeAuthorizationCode,
   importApprovedCanvaPptx,
   parseBootstrapCredentials,
   promptWindowsCredentialManagerBootstrap,
+  reassembleWindowsVaultValue,
+  windowsChunkedCredentialManagerScript,
   windowsCredentialManagerBootstrapScript,
   windowsCredentialManagerScript,
   type CredentialVault
@@ -63,6 +68,23 @@ describe("local Canva Connect", () => {
     expect(script).toContain("__bookagent_canva_bootstrap__:");
     expect(script).not.toContain("actual-secret");
     expect(parseBootstrapCredentials(JSON.stringify({ clientId: "client", clientSecret: "secret" }))).toEqual({ clientId: "client", clientSecret: "secret" });
+  });
+
+  it("chunks large Windows vault values and fails closed on missing or altered chunks", () => {
+    const value = JSON.stringify({ clientId: "client", clientSecret: "secret", accessToken: "a".repeat(3_000), refreshToken: "r".repeat(3_000) });
+    const stored = chunkWindowsVaultValue(value, "a".repeat(32));
+    expect(stored.chunks).toHaveLength(3);
+    expect(stored.chunks.every((chunk) => chunk.byteLength <= WINDOWS_CREDENTIAL_BLOB_BYTES)).toBe(true);
+    expect(reassembleWindowsVaultValue(stored.manifest, stored.chunks)).toBe(value);
+    expect(() => reassembleWindowsVaultValue(stored.manifest, stored.chunks.slice(0, -1))).toThrow(/chunks are incomplete|manifest/u);
+    const altered = stored.chunks.map((chunk) => Buffer.from(chunk));
+    altered[0]![0] ^= 0xff;
+    expect(() => reassembleWindowsVaultValue(stored.manifest, altered)).toThrow(/integrity/u);
+    expect(() => chunkWindowsVaultValue("a".repeat(WINDOWS_VAULT_MAX_BYTES + 1))).toThrow(/limit/u);
+    const script = windowsChunkedCredentialManagerScript("set");
+    expect(script).toContain("CredEnumerate");
+    expect(script).toContain("__bookagent_canva_manifest_v1__");
+    expect(script.indexOf("Put-Record ($target+'/v1/'")).toBeLessThan(script.indexOf("Put-Record $target $manifestBytes"));
   });
 
   it("exchanges OAuth only through a mocked HTTPS request and never puts the secret in the result", async () => {

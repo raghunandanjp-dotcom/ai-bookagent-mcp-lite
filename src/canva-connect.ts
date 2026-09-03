@@ -16,6 +16,34 @@ const TOKEN_URL = "https://api.canva.com/rest/v1/oauth/token";
 const IMPORT_URL = "https://api.canva.com/rest/v1/imports";
 const VAULT_SERVICE = "AI Book Agent MCP Lite Canva Connect";
 const VAULT_ACCOUNT = "default";
+export const WINDOWS_CREDENTIAL_BLOB_BYTES = 5 * 512;
+export const WINDOWS_VAULT_MAX_BYTES = 64 * 1024;
+export const WINDOWS_VAULT_MAX_CHUNKS = 32;
+
+export interface WindowsVaultManifest {
+  version: 1;
+  generation: string;
+  chunkCount: number;
+  totalBytes: number;
+  sha256: string;
+}
+
+export function chunkWindowsVaultValue(value: string, generation = randomUUID().replace(/-/gu, "")): { manifest: WindowsVaultManifest; chunks: Buffer[] } {
+  const bytes = Buffer.from(value, "utf8");
+  if (bytes.byteLength === 0 || bytes.byteLength > WINDOWS_VAULT_MAX_BYTES) throw new Error("Windows Credential Manager value exceeds the supported secure-storage limit.");
+  const chunks: Buffer[] = [];
+  for (let offset = 0; offset < bytes.byteLength; offset += WINDOWS_CREDENTIAL_BLOB_BYTES) chunks.push(bytes.subarray(offset, Math.min(offset + WINDOWS_CREDENTIAL_BLOB_BYTES, bytes.byteLength)));
+  if (chunks.length > WINDOWS_VAULT_MAX_CHUNKS) throw new Error("Windows Credential Manager value requires too many secure-storage chunks.");
+  return { manifest: { version: 1, generation, chunkCount: chunks.length, totalBytes: bytes.byteLength, sha256: createHash("sha256").update(bytes).digest("hex") }, chunks };
+}
+
+export function reassembleWindowsVaultValue(manifest: WindowsVaultManifest, chunks: readonly Buffer[]): string {
+  if (manifest.version !== 1 || !/^[a-f0-9]{32}$/u.test(manifest.generation) || !Number.isInteger(manifest.chunkCount) || manifest.chunkCount < 1 || manifest.chunkCount > WINDOWS_VAULT_MAX_CHUNKS || !Number.isInteger(manifest.totalBytes) || manifest.totalBytes < 1 || manifest.totalBytes > WINDOWS_VAULT_MAX_BYTES || !/^[a-f0-9]{64}$/u.test(manifest.sha256) || chunks.length !== manifest.chunkCount) throw new Error("Windows Credential Manager manifest is invalid.");
+  if (chunks.some((chunk, index) => chunk.byteLength === 0 || chunk.byteLength > WINDOWS_CREDENTIAL_BLOB_BYTES || (index < chunks.length - 1 && chunk.byteLength !== WINDOWS_CREDENTIAL_BLOB_BYTES))) throw new Error("Windows Credential Manager chunks are incomplete.");
+  const bytes = Buffer.concat(chunks);
+  if (bytes.byteLength !== manifest.totalBytes || createHash("sha256").update(bytes).digest("hex") !== manifest.sha256) throw new Error("Windows Credential Manager chunk integrity check failed.");
+  return bytes.toString("utf8");
+}
 
 export type CanvaConnectFailureCode =
   | "secure_storage_unavailable" | "not_configured" | "oauth_failed" | "authorization_expired"
@@ -104,6 +132,7 @@ export class NativeCredentialVault implements CredentialVault {
   }
 
   async set(value: string): Promise<void> {
+    if (this.platform === "win32") chunkWindowsVaultValue(value);
     const result = await this.run("set", value);
     if (result.exitCode !== 0) throw new CanvaConnectError("secure_storage_unavailable", false, "Secure OS credential storage is unavailable.");
   }
@@ -127,7 +156,7 @@ export class NativeCredentialVault implements CredentialVault {
     // The PowerShell program is fixed source; credential JSON travels through the
     // child's stdin pipe, never an argv value. macOS still deliberately fails
     // closed until its equivalent native Keychain bridge is shipped and exercised.
-    const script = this.platform === "win32" ? windowsCredentialManagerScript(operation) : this.platform === "darwin" ? macosVaultScript(operation) : undefined;
+    const script = this.platform === "win32" ? windowsChunkedCredentialManagerScript(operation) : this.platform === "darwin" ? macosVaultScript(operation) : undefined;
     if (!script) return { exitCode: 2, stdout: "", stderr: "unsupported platform" };
     const shell = this.platform === "win32" ? "powershell.exe" : "/usr/bin/osascript";
     const args = this.platform === "win32"
@@ -137,32 +166,37 @@ export class NativeCredentialVault implements CredentialVault {
   }
 }
 
-// Windows Credential Manager via CredRead/CredWrite. No credential value appears in args.
-/** Fixed helper source; it contains no credential values. */
-export function windowsCredentialManagerScript(operation: "probe" | "get" | "set" | "remove"): string {
-  const common = `$ErrorActionPreference='Stop'; Add-Type @'
+/** Fixed helper source; values move only through stdin/stdout pipes. */
+export function windowsChunkedCredentialManagerScript(operation: "probe" | "get" | "set" | "remove"): string {
+  return `$ErrorActionPreference='Stop'; Add-Type @'
 using System;
 using System.Runtime.InteropServices;
-public static class BookAgentCredMan {
+public static class BookAgentChunkedCredMan {
   [StructLayout(LayoutKind.Sequential, CharSet=CharSet.Unicode)] public struct CREDENTIAL {
     public UInt32 Flags; public UInt32 Type; public string TargetName; public string Comment;
     public System.Runtime.InteropServices.ComTypes.FILETIME LastWritten; public UInt32 CredentialBlobSize; public IntPtr CredentialBlob;
-    public UInt32 Persist; public UInt32 AttributeCount; public IntPtr Attributes;
-    public string TargetAlias; public string UserName;
+    public UInt32 Persist; public UInt32 AttributeCount; public IntPtr Attributes; public string TargetAlias; public string UserName;
   }
   [DllImport("Advapi32.dll", CharSet=CharSet.Unicode, SetLastError=true)] public static extern bool CredRead(string target, UInt32 type, UInt32 flags, out IntPtr credential);
   [DllImport("Advapi32.dll", CharSet=CharSet.Unicode, SetLastError=true)] public static extern bool CredWrite(ref CREDENTIAL credential, UInt32 flags);
-  [DllImport("Advapi32.dll", SetLastError=true)] public static extern void CredFree(IntPtr credential);
   [DllImport("Advapi32.dll", CharSet=CharSet.Unicode, SetLastError=true)] public static extern bool CredDelete(string target, UInt32 type, UInt32 flags);
-  [DllImport("OleAut32.dll")] public static extern UInt32 SysStringByteLen(IntPtr bstr);
+  [DllImport("Advapi32.dll", CharSet=CharSet.Unicode, SetLastError=true)] public static extern bool CredEnumerate(string filter, UInt32 flags, out UInt32 count, out IntPtr credentials);
+  [DllImport("Advapi32.dll", SetLastError=true)] public static extern void CredFree(IntPtr credential);
 }
 '@;
-$target='AI Book Agent MCP Lite Canva Connect/default';
-`;
-  if (operation === "probe") return `${common}$ptr=[IntPtr]::Zero; [void][BookAgentCredMan]::CredRead($target,1,0,[ref]$ptr); if($ptr -ne [IntPtr]::Zero){[BookAgentCredMan]::CredFree($ptr)}; exit 0`;
-  if (operation === "get") return `${common}$ptr=[IntPtr]::Zero; if(-not [BookAgentCredMan]::CredRead($target,1,0,[ref]$ptr)){ if([Runtime.InteropServices.Marshal]::GetLastWin32Error() -eq 1168){exit 44}; exit 2 }; try { $credential=[Runtime.InteropServices.Marshal]::PtrToStructure($ptr,[type][BookAgentCredMan+CREDENTIAL]); $bytes=New-Object byte[] ([int]$credential.CredentialBlobSize); if($bytes.Length -gt 0){[Runtime.InteropServices.Marshal]::Copy($credential.CredentialBlob,$bytes,0,$bytes.Length)}; $marker='__bookagent_canva_bootstrap__:'; if($credential.UserName -and $credential.UserName.StartsWith($marker)){ $value=[pscustomobject]@{clientId=$credential.UserName.Substring($marker.Length);clientSecret=[Text.Encoding]::Unicode.GetString($bytes)} | ConvertTo-Json -Compress; [Console]::Out.Write($value) } else { [Console]::Out.Write([Text.Encoding]::UTF8.GetString($bytes)) }; [Array]::Clear($bytes,0,$bytes.Length) } finally { [BookAgentCredMan]::CredFree($ptr) }`;
-  if (operation === "set") return `${common}$raw=[Console]::In.ReadToEnd(); $payload=$raw | ConvertFrom-Json; $bytes=[Text.Encoding]::UTF8.GetBytes([string]$payload.value); $length=$bytes.Length; if($length -eq 0){exit 2}; $blob=[Runtime.InteropServices.Marshal]::AllocCoTaskMem($length); try { [Runtime.InteropServices.Marshal]::Copy($bytes,0,$blob,$length); $credential=New-Object BookAgentCredMan+CREDENTIAL; $credential.Type=1; $credential.TargetName=$target; $credential.CredentialBlobSize=[uint32]$length; $credential.CredentialBlob=$blob; $credential.Persist=2; $credential.UserName='AI Book Agent MCP Lite'; if(-not [BookAgentCredMan]::CredWrite([ref]$credential,0)){exit 2} } finally { [Array]::Clear($bytes,0,$length); if($blob -ne [IntPtr]::Zero){ $zero=New-Object byte[] $length; [Runtime.InteropServices.Marshal]::Copy($zero,0,$blob,$length); [Runtime.InteropServices.Marshal]::FreeCoTaskMem($blob) } }`;
-  return `${common}if(-not [BookAgentCredMan]::CredDelete($target,1,0)){ if([Runtime.InteropServices.Marshal]::GetLastWin32Error() -eq 1168){exit 44}; exit 2 }`;
+$target='AI Book Agent MCP Lite Canva Connect/default'; $chunkBytes=2560; $maxBytes=65536; $maxChunks=32; $op='${operation}';
+function Get-Record([string]$name) { $ptr=[IntPtr]::Zero; if(-not [BookAgentChunkedCredMan]::CredRead($name,1,0,[ref]$ptr)){if([Runtime.InteropServices.Marshal]::GetLastWin32Error() -eq 1168){$script:recordMissing=$true};return $null}; try{$c=[Runtime.InteropServices.Marshal]::PtrToStructure($ptr,[type][BookAgentChunkedCredMan+CREDENTIAL]); $b=New-Object byte[] ([int]$c.CredentialBlobSize); if($b.Length){[Runtime.InteropServices.Marshal]::Copy($c.CredentialBlob,$b,0,$b.Length)}; [pscustomobject]@{UserName=$c.UserName;Bytes=$b}}finally{[BookAgentChunkedCredMan]::CredFree($ptr)} }
+function Put-Record([string]$name,[byte[]]$value,[string]$marker) { if($value.Length -lt 1 -or $value.Length -gt $chunkBytes){throw 'invalid blob'}; $p=[Runtime.InteropServices.Marshal]::AllocCoTaskMem($value.Length); try{[Runtime.InteropServices.Marshal]::Copy($value,0,$p,$value.Length); $c=New-Object BookAgentChunkedCredMan+CREDENTIAL; $c.Type=1;$c.TargetName=$name;$c.CredentialBlobSize=[uint32]$value.Length;$c.CredentialBlob=$p;$c.Persist=2;$c.UserName=$marker;if(-not [BookAgentChunkedCredMan]::CredWrite([ref]$c,0)){throw 'write failed'}}finally{if($p -ne [IntPtr]::Zero){$z=New-Object byte[] $value.Length;[Runtime.InteropServices.Marshal]::Copy($z,0,$p,$value.Length);[Runtime.InteropServices.Marshal]::FreeCoTaskMem($p)}} }
+function Clear-Generations([string]$keep) { $count=[uint32]0;$ptr=[IntPtr]::Zero;if(-not [BookAgentChunkedCredMan]::CredEnumerate($target+'/v1/*',0,[ref]$count,[ref]$ptr)){return};try{for($i=0;$i -lt $count;$i++){$item=[Runtime.InteropServices.Marshal]::ReadIntPtr($ptr,[IntPtr]::Size*$i);$c=[Runtime.InteropServices.Marshal]::PtrToStructure($item,[type][BookAgentChunkedCredMan+CREDENTIAL]);if(-not $keep -or $c.TargetName -notlike ($target+'/v1/'+$keep+'/*')){[void][BookAgentChunkedCredMan]::CredDelete($c.TargetName,1,0)}}}finally{[BookAgentChunkedCredMan]::CredFree($ptr)} }
+if($op -eq 'probe'){ $p=[IntPtr]::Zero;[void][BookAgentChunkedCredMan]::CredRead($target,1,0,[ref]$p);if($p -ne [IntPtr]::Zero){[BookAgentChunkedCredMan]::CredFree($p)};exit 0 }
+if($op -eq 'set'){ $raw=[Console]::In.ReadToEnd();$payload=$raw|ConvertFrom-Json;$bytes=[Text.Encoding]::UTF8.GetBytes([string]$payload.value);try{if($bytes.Length -lt 1 -or $bytes.Length -gt $maxBytes){exit 2};$count=[int][Math]::Ceiling($bytes.Length/[double]$chunkBytes);if($count -lt 1 -or $count -gt $maxChunks){exit 2};$generation=[Guid]::NewGuid().ToString('N');for($i=0;$i -lt $count;$i++){$offset=$i*$chunkBytes;$size=[Math]::Min($chunkBytes,$bytes.Length-$offset);$piece=New-Object byte[] $size;try{[Array]::Copy($bytes,$offset,$piece,0,$size);Put-Record ($target+'/v1/'+$generation+'/chunk/'+$i) $piece ('__bookagent_canva_chunk_v1__:'+$generation+':'+$i)}finally{[Array]::Clear($piece,0,$piece.Length)}};$sha=[Security.Cryptography.SHA256]::Create();try{$digest=([BitConverter]::ToString($sha.ComputeHash($bytes))).Replace('-','').ToLowerInvariant()}finally{$sha.Dispose()};$manifest=[pscustomobject]@{version=1;generation=$generation;chunkCount=$count;totalBytes=$bytes.Length;sha256=$digest}|ConvertTo-Json -Compress;$manifestBytes=[Text.Encoding]::UTF8.GetBytes($manifest);try{Put-Record $target $manifestBytes '__bookagent_canva_manifest_v1__'}finally{[Array]::Clear($manifestBytes,0,$manifestBytes.Length)};Clear-Generations $generation}finally{[Array]::Clear($bytes,0,$bytes.Length)};exit 0 }
+if($op -eq 'get'){ $record=Get-Record $target;if($null -eq $record){if($script:recordMissing){exit 44};exit 2};try{$bootstrap='__bookagent_canva_bootstrap__:';if($record.UserName -and $record.UserName.StartsWith($bootstrap)){$out=[pscustomobject]@{clientId=$record.UserName.Substring($bootstrap.Length);clientSecret=[Text.Encoding]::Unicode.GetString($record.Bytes)}|ConvertTo-Json -Compress;[Console]::Out.Write($out);exit 0};if($record.UserName -ne '__bookagent_canva_manifest_v1__'){[Console]::Out.Write([Text.Encoding]::UTF8.GetString($record.Bytes));exit 0};$m=[Text.Encoding]::UTF8.GetString($record.Bytes)|ConvertFrom-Json;if($m.version -ne 1 -or $m.generation -notmatch '^[a-f0-9]{32}$' -or $m.chunkCount -lt 1 -or $m.chunkCount -gt $maxChunks -or $m.totalBytes -lt 1 -or $m.totalBytes -gt $maxBytes -or $m.sha256 -notmatch '^[a-f0-9]{64}$'){exit 2};$all=New-Object System.Collections.Generic.List[byte];for($i=0;$i -lt [int]$m.chunkCount;$i++){$part=Get-Record ($target+'/v1/'+$m.generation+'/chunk/'+$i);if($null -eq $part -or $part.UserName -ne ('__bookagent_canva_chunk_v1__:'+$m.generation+':'+$i) -or $part.Bytes.Length -lt 1 -or $part.Bytes.Length -gt $chunkBytes -or ($i -lt [int]$m.chunkCount-1 -and $part.Bytes.Length -ne $chunkBytes)){exit 2};$all.AddRange([byte[]]$part.Bytes);[Array]::Clear($part.Bytes,0,$part.Bytes.Length)};$joined=$all.ToArray();try{if($joined.Length -ne [int]$m.totalBytes){exit 2};$sha=[Security.Cryptography.SHA256]::Create();try{$actual=([BitConverter]::ToString($sha.ComputeHash($joined))).Replace('-','').ToLowerInvariant()}finally{$sha.Dispose()};if($actual -ne $m.sha256){exit 2};[Console]::Out.Write([Text.Encoding]::UTF8.GetString($joined))}finally{[Array]::Clear($joined,0,$joined.Length)}}finally{[Array]::Clear($record.Bytes,0,$record.Bytes.Length)};exit 0 }
+if(-not [BookAgentChunkedCredMan]::CredDelete($target,1,0)){Clear-Generations '';if([Runtime.InteropServices.Marshal]::GetLastWin32Error() -eq 1168){exit 44};exit 2};Clear-Generations '';`;
+}
+
+/** Compatibility export for callers that used the original helper. */
+export function windowsCredentialManagerScript(operation: "probe" | "get" | "set" | "remove"): string {
+  return windowsChunkedCredentialManagerScript(operation);
 }
 
 /**
