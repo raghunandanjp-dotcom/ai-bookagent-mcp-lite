@@ -21,7 +21,7 @@ Do not paste the client secret into chat, an MCP call, a project manifest, a `.e
 ai-bookagent canva configure
 ```
 
-The command requires an interactive TTY. It visibly echoes the non-secret client ID, then presents one stable client-secret prompt with clear Enter/Ctrl+C instructions. Secret keystrokes never echo or redraw; only after Enter does it acknowledge the entered character count. It starts only a loopback listener on `127.0.0.1:3001`, prints an authorization URL, uses OAuth authorization-code PKCE, and stores the client credentials plus refresh-token lifecycle outside the project. It never opens the browser itself. The permission notice at Canva is the moment to review the data-transfer consent for your integration.
+On Windows, the command launches a fixed PowerShell helper that uses PowerShell's standard `Read-Host -AsSecureString` prompt, not Node raw mode. In VS Code's integrated PowerShell terminal, use the normal `Ctrl+V` to paste both the visible client ID and the masked client secret, then press Enter. The secret is displayed only as PowerShell's mask and moves directly into Credential Manager; it is not echoed, redrawn, supplied as an argument, or printed back by the helper. It starts the loopback listener on `127.0.0.1:3001` only after the secure prompt succeeds, prints an authorization URL, uses OAuth authorization-code PKCE, and stores the refresh-token lifecycle outside the project. It never opens the browser itself. The permission notice at Canva is the moment to review the data-transfer consent for your integration.
 
 Use these non-secret local commands:
 

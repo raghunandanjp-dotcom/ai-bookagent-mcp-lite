@@ -46,6 +46,7 @@ export interface CredentialVault {
 
 interface CommandResult { exitCode: number; stdout: string; stderr: string; }
 type CommandRunner = (command: string, args: string[], stdin?: string) => Promise<CommandResult>;
+type InteractiveCommandRunner = (command: string, args: string[]) => Promise<Pick<CommandResult, "exitCode" | "stderr">>;
 
 function runCommand(command: string, args: string[], stdin?: string): Promise<CommandResult> {
   return new Promise((resolve, reject) => {
@@ -60,9 +61,22 @@ function runCommand(command: string, args: string[], stdin?: string): Promise<Co
   });
 }
 
+function runInteractiveCommand(command: string, args: string[]): Promise<Pick<CommandResult, "exitCode" | "stderr">> {
+  return new Promise((resolve, reject) => {
+    // Inherit the normal VS Code PowerShell console: Read-Host owns the paste-aware
+    // line editor. Only diagnostics are piped back, never a credential value.
+    const child = spawn(command, args, { stdio: ["inherit", "inherit", "pipe"], windowsHide: true });
+    let stderr = "";
+    child.stderr.setEncoding("utf8").on("data", (data: string) => { stderr += data; });
+    child.on("error", reject);
+    child.on("close", (exitCode) => resolve({ exitCode: exitCode ?? 1, stderr }));
+  });
+}
+
 /**
- * OS vault bridge. Secrets travel through stdin, never a CLI argument, project file,
- * environment variable, log, MCP argument, or returned command result.
+ * OS vault bridge. Linux secrets travel through a stdin pipe; Windows setup uses
+ * PowerShell's secure inherited-console prompt. Neither path uses a CLI argument,
+ * project file, environment variable, log, MCP argument, or visible command result.
  * Linux requires libsecret's `secret-tool`; macOS/Windows use the native keychain APIs
  * through short fixed scripts. A missing vault is a hard failure.
  */
@@ -134,14 +148,49 @@ public static class BookAgentCredMan {
   [DllImport("Advapi32.dll", CharSet=CharSet.Unicode, SetLastError=true)] public static extern bool CredWrite(ref CREDENTIAL credential, UInt32 flags);
   [DllImport("Advapi32.dll", SetLastError=true)] public static extern void CredFree(IntPtr credential);
   [DllImport("Advapi32.dll", CharSet=CharSet.Unicode, SetLastError=true)] public static extern bool CredDelete(string target, UInt32 type, UInt32 flags);
+  [DllImport("OleAut32.dll")] public static extern UInt32 SysStringByteLen(IntPtr bstr);
 }
 '@;
 $target='AI Book Agent MCP Lite Canva Connect/default';
 `;
   if (operation === "probe") return `${common}$ptr=[IntPtr]::Zero; [void][BookAgentCredMan]::CredRead($target,1,0,[ref]$ptr); if($ptr -ne [IntPtr]::Zero){[BookAgentCredMan]::CredFree($ptr)}; exit 0`;
-  if (operation === "get") return `${common}$ptr=[IntPtr]::Zero; if(-not [BookAgentCredMan]::CredRead($target,1,0,[ref]$ptr)){ if([Runtime.InteropServices.Marshal]::GetLastWin32Error() -eq 1168){exit 44}; exit 2 }; try { $credential=[Runtime.InteropServices.Marshal]::PtrToStructure($ptr,[type][BookAgentCredMan+CREDENTIAL]); $bytes=New-Object byte[] ([int]$credential.CredentialBlobSize); if($bytes.Length -gt 0){[Runtime.InteropServices.Marshal]::Copy($credential.CredentialBlob,$bytes,0,$bytes.Length)}; [Console]::Out.Write([Text.Encoding]::UTF8.GetString($bytes)); [Array]::Clear($bytes,0,$bytes.Length) } finally { [BookAgentCredMan]::CredFree($ptr) }`;
+  if (operation === "get") return `${common}$ptr=[IntPtr]::Zero; if(-not [BookAgentCredMan]::CredRead($target,1,0,[ref]$ptr)){ if([Runtime.InteropServices.Marshal]::GetLastWin32Error() -eq 1168){exit 44}; exit 2 }; try { $credential=[Runtime.InteropServices.Marshal]::PtrToStructure($ptr,[type][BookAgentCredMan+CREDENTIAL]); $bytes=New-Object byte[] ([int]$credential.CredentialBlobSize); if($bytes.Length -gt 0){[Runtime.InteropServices.Marshal]::Copy($credential.CredentialBlob,$bytes,0,$bytes.Length)}; $marker='__bookagent_canva_bootstrap__:'; if($credential.UserName -and $credential.UserName.StartsWith($marker)){ $value=[pscustomobject]@{clientId=$credential.UserName.Substring($marker.Length);clientSecret=[Text.Encoding]::Unicode.GetString($bytes)} | ConvertTo-Json -Compress; [Console]::Out.Write($value) } else { [Console]::Out.Write([Text.Encoding]::UTF8.GetString($bytes)) }; [Array]::Clear($bytes,0,$bytes.Length) } finally { [BookAgentCredMan]::CredFree($ptr) }`;
   if (operation === "set") return `${common}$raw=[Console]::In.ReadToEnd(); $payload=$raw | ConvertFrom-Json; $bytes=[Text.Encoding]::UTF8.GetBytes([string]$payload.value); $length=$bytes.Length; if($length -eq 0){exit 2}; $blob=[Runtime.InteropServices.Marshal]::AllocCoTaskMem($length); try { [Runtime.InteropServices.Marshal]::Copy($bytes,0,$blob,$length); $credential=New-Object BookAgentCredMan+CREDENTIAL; $credential.Type=1; $credential.TargetName=$target; $credential.CredentialBlobSize=[uint32]$length; $credential.CredentialBlob=$blob; $credential.Persist=2; $credential.UserName='AI Book Agent MCP Lite'; if(-not [BookAgentCredMan]::CredWrite([ref]$credential,0)){exit 2} } finally { [Array]::Clear($bytes,0,$length); if($blob -ne [IntPtr]::Zero){ $zero=New-Object byte[] $length; [Runtime.InteropServices.Marshal]::Copy($zero,0,$blob,$length); [Runtime.InteropServices.Marshal]::FreeCoTaskMem($blob) } }`;
   return `${common}if(-not [BookAgentCredMan]::CredDelete($target,1,0)){ if([Runtime.InteropServices.Marshal]::GetLastWin32Error() -eq 1168){exit 44}; exit 2 }`;
+}
+
+/**
+ * A fixed Windows-only prompt. `Read-Host -AsSecureString` uses the normal
+ * PowerShell line editor, so VS Code's usual Ctrl+V paste reaches it without
+ * Node raw-mode interception. It writes only UTF-16 secret bytes to CredMan.
+ */
+export function windowsCredentialManagerBootstrapScript(): string {
+  return `$ErrorActionPreference='Stop'; Add-Type @'
+using System;
+using System.Runtime.InteropServices;
+public static class BookAgentBootstrapCredMan {
+  [StructLayout(LayoutKind.Sequential, CharSet=CharSet.Unicode)] public struct CREDENTIAL {
+    public UInt32 Flags; public UInt32 Type; public string TargetName; public string Comment;
+    public System.Runtime.InteropServices.ComTypes.FILETIME LastWritten; public UInt32 CredentialBlobSize; public IntPtr CredentialBlob;
+    public UInt32 Persist; public UInt32 AttributeCount; public IntPtr Attributes;
+    public string TargetAlias; public string UserName;
+  }
+  [DllImport("Advapi32.dll", CharSet=CharSet.Unicode, SetLastError=true)] public static extern bool CredWrite(ref CREDENTIAL credential, UInt32 flags);
+  [DllImport("OleAut32.dll")] public static extern UInt32 SysStringByteLen(IntPtr bstr);
+}
+'@;
+$target='AI Book Agent MCP Lite Canva Connect/default';
+$clientId=(Read-Host -Prompt 'Canva client ID (visible; Ctrl+V paste supported; Enter to continue)').Trim();
+if([string]::IsNullOrWhiteSpace($clientId)){exit 2};
+$secret=Read-Host -Prompt 'Canva client secret (masked; Ctrl+V paste supported; Enter to continue; Ctrl+C cancels)' -AsSecureString;
+$bstr=[Runtime.InteropServices.Marshal]::SecureStringToBSTR($secret); $length=[int][BookAgentBootstrapCredMan]::SysStringByteLen($bstr); if($length -eq 0){[Runtime.InteropServices.Marshal]::ZeroFreeBSTR($bstr); $secret.Dispose(); exit 2};
+$source=New-Object byte[] $length; $blob=[IntPtr]::Zero;
+try { [Runtime.InteropServices.Marshal]::Copy($bstr,$source,0,$length); $blob=[Runtime.InteropServices.Marshal]::AllocCoTaskMem($length); [Runtime.InteropServices.Marshal]::Copy($source,0,$blob,$length); $credential=New-Object BookAgentBootstrapCredMan+CREDENTIAL; $credential.Type=1; $credential.TargetName=$target; $credential.CredentialBlobSize=[uint32]$length; $credential.CredentialBlob=$blob; $credential.Persist=2; $credential.UserName='__bookagent_canva_bootstrap__:'+$clientId; if(-not [BookAgentBootstrapCredMan]::CredWrite([ref]$credential,0)){exit 2} } finally { [Array]::Clear($source,0,$source.Length); if($blob -ne [IntPtr]::Zero){$zero=New-Object byte[] $length; [Runtime.InteropServices.Marshal]::Copy($zero,0,$blob,$length); [Runtime.InteropServices.Marshal]::FreeCoTaskMem($blob)}; [Runtime.InteropServices.Marshal]::ZeroFreeBSTR($bstr); $secret.Dispose() }`;
+}
+
+export async function promptWindowsCredentialManagerBootstrap(runner: InteractiveCommandRunner = runInteractiveCommand): Promise<void> {
+  const result = await runner("powershell.exe", ["-NoProfile", "-Command", windowsCredentialManagerBootstrapScript()]);
+  if (result.exitCode !== 0) throw new CanvaConnectError("secure_storage_unavailable", false, "Canva credentials were not stored in Windows Credential Manager.");
 }
 
 // JXA can use the Security framework, but this repository does not ship a native bridge.
@@ -162,10 +211,21 @@ export function parseStoredCredentials(value: string): CanvaCredentials {
   } catch { throw new CanvaConnectError("not_configured", false, "Canva Connect is not configured in this OS account."); }
 }
 
+export function parseBootstrapCredentials(value: string): Pick<CanvaCredentials, "clientId" | "clientSecret"> {
+  try {
+    const parsed = JSON.parse(value) as Record<string, unknown>;
+    if (typeof parsed.clientId !== "string" || typeof parsed.clientSecret !== "string" || !parsed.clientId || !parsed.clientSecret) throw new Error();
+    return { clientId: parsed.clientId, clientSecret: parsed.clientSecret };
+  } catch { throw new CanvaConnectError("not_configured", false, "Canva client credentials are not available in Windows Credential Manager."); }
+}
+
 export async function canvaConnectStatus(vault: CredentialVault): Promise<{ configured: boolean; secureStorage: boolean }> {
   const secureStorage = await vault.available();
   if (!secureStorage) return { configured: false, secureStorage: false };
-  return { configured: Boolean(await vault.get()), secureStorage: true };
+  const stored = await vault.get();
+  if (!stored) return { configured: false, secureStorage: true };
+  try { parseStoredCredentials(stored); return { configured: true, secureStorage: true }; }
+  catch { return { configured: false, secureStorage: true }; }
 }
 
 export function canvaAuthorizationUrl(clientId: string, state: string, verifier: string): string {

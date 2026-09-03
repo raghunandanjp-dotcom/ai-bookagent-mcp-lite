@@ -19,7 +19,7 @@ import {
   updateCreatureSelection
 } from "./workflow.ts";
 import { loadProject } from "./project.ts";
-import { NativeCredentialVault, canvaConnectStatus, configureCanvaConnect, consentToLocalCanvaImport, importApprovedCanvaPptx, promptHidden, promptVisible } from "./canva-connect.ts";
+import { NativeCredentialVault, canvaConnectStatus, configureCanvaConnect, consentToLocalCanvaImport, importApprovedCanvaPptx, parseBootstrapCredentials, promptHidden, promptVisible, promptWindowsCredentialManagerBootstrap } from "./canva-connect.ts";
 
 function usage(): never {
   console.error(`Usage:
@@ -57,8 +57,18 @@ if (command === "canva") {
   const vault = new NativeCredentialVault();
   let canvaResult: unknown;
   if (projectDir === "configure") {
-    const clientId = await promptVisible("Canva client ID (visible; Enter to continue, Ctrl+C to cancel): ");
-    const clientSecret = await promptHidden("Canva client secret (hidden; type it, then press Enter; Ctrl+C to cancel): ");
+    let clientId: string;
+    let clientSecret: string;
+    if (process.platform === "win32") {
+      if (!await vault.available()) throw new Error("Windows Credential Manager is unavailable; Canva Connect was not configured.");
+      await promptWindowsCredentialManagerBootstrap();
+      const bootstrap = await vault.get();
+      if (!bootstrap) throw new Error("Canva credentials were not stored in Windows Credential Manager.");
+      ({ clientId, clientSecret } = parseBootstrapCredentials(bootstrap));
+    } else {
+      clientId = await promptVisible("Canva client ID (visible; Enter to continue, Ctrl+C to cancel): ");
+      clientSecret = await promptHidden("Canva client secret (hidden; type it, then press Enter; Ctrl+C to cancel): ");
+    }
     await configureCanvaConnect(vault, clientId, clientSecret);
     canvaResult = { configured: true };
   } else if (projectDir === "status") canvaResult = await canvaConnectStatus(vault);

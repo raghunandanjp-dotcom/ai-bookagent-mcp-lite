@@ -7,7 +7,9 @@ import {
   canvaAuthorizationUrl,
   exchangeAuthorizationCode,
   importApprovedCanvaPptx,
-  secretReceivedAcknowledgement,
+  parseBootstrapCredentials,
+  promptWindowsCredentialManagerBootstrap,
+  windowsCredentialManagerBootstrapScript,
   windowsCredentialManagerScript,
   type CredentialVault
 } from "../src/canva-connect.ts";
@@ -41,11 +43,22 @@ describe("local Canva Connect", () => {
     expect(url.searchParams.get("code_challenge_method")).toBe("S256");
   });
 
-  it("acknowledges only the length after a secret is submitted", () => {
-    expect(secretReceivedAcknowledgement(0)).toBe("Secret received (0 characters).");
-    expect(secretReceivedAcknowledgement(4)).toBe("Secret received (4 characters).");
-    expect(secretReceivedAcknowledgement(40)).toBe("Secret received (40 characters).");
-    expect(secretReceivedAcknowledgement(4)).not.toContain("actual-secret");
+  it("uses PowerShell's normal masked console input for Windows credential paste", async () => {
+    const calls: Array<{ command: string; args: string[] }> = [];
+    await promptWindowsCredentialManagerBootstrap(async (command, args) => {
+      calls.push({ command, args });
+      return { exitCode: 0, stderr: "" };
+    });
+    expect(calls).toHaveLength(1);
+    expect(calls[0]!.command).toBe("powershell.exe");
+    expect(calls[0]!.args).toEqual(expect.arrayContaining(["-NoProfile", "-Command"]));
+    const script = windowsCredentialManagerBootstrapScript();
+    expect(script).toContain("Read-Host");
+    expect(script).toContain("-AsSecureString");
+    expect(script).toContain("CredWrite");
+    expect(script).toContain("Ctrl+V paste supported");
+    expect(script).not.toContain("actual-secret");
+    expect(parseBootstrapCredentials(JSON.stringify({ clientId: "client", clientSecret: "secret" }))).toEqual({ clientId: "client", clientSecret: "secret" });
   });
 
   it("exchanges OAuth only through a mocked HTTPS request and never puts the secret in the result", async () => {
