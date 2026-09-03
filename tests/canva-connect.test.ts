@@ -9,6 +9,7 @@ import {
   canvaAuthorizationUrl,
   chunkWindowsVaultValue,
   classifyCanvaTokenFailure,
+  collectWindowsCanvaCredentialsInBrowser,
   exchangeAuthorizationCode,
   importApprovedCanvaPptx,
   parseBootstrapCredentials,
@@ -57,7 +58,7 @@ describe("local Canva Connect", () => {
     expect(trustedEditUrl("https://www.canva.com/api/design/opaque-return-token/view", "DAGabc")).toBe(false);
   });
 
-  it("uses PowerShell's normal masked console input for Windows credential paste", async () => {
+  it("keeps the legacy PowerShell bootstrap masked without claiming VS Code paste support", async () => {
     const calls: Array<{ command: string; args: string[] }> = [];
     await promptWindowsCredentialManagerBootstrap(async (command, args) => {
       calls.push({ command, args });
@@ -70,12 +71,36 @@ describe("local Canva Connect", () => {
     expect(script).toContain("Read-Host");
     expect(script).toContain("-AsSecureString");
     expect(script).toContain("CredWrite");
-    expect(script).toContain("Ctrl+V paste supported");
+    expect(script).not.toContain("Ctrl+V paste supported");
     expect(script).toContain("SysStringByteLen");
     expect(windowsCredentialManagerScript("get")).toContain("Unicode.GetString");
     expect(script).toContain("__bookagent_canva_bootstrap__:");
     expect(script).not.toContain("actual-secret");
     expect(parseBootstrapCredentials(JSON.stringify({ clientId: "client", clientSecret: "secret" }))).toEqual({ clientId: "client", clientSecret: "secret" });
+  });
+
+  it("collects Windows setup through a loopback browser form without emitting its POST value", async () => {
+    const vault = new MemoryVault();
+    const announced: string[] = [];
+    const submittedValue = ["browser", "test", "value"].join("-");
+    const setup = collectWindowsCanvaCredentialsInBrowser(vault, { timeoutMs: 2_000, announce: (url) => announced.push(url) });
+    for (let attempt = 0; attempt < 20 && announced.length === 0; attempt += 1) await new Promise((resolve) => setTimeout(resolve, 5));
+    expect(announced).toHaveLength(1);
+    const form = await fetch(announced[0]!);
+    const html = await form.text();
+    expect(html).toContain("type=password");
+    expect(html).not.toContain(submittedValue);
+    const response = await fetch(new URL("/configure", announced[0]), { method: "POST", headers: { "content-type": "application/x-www-form-urlencoded" }, body: new URLSearchParams({ clientId: "browser-client", clientSecret: submittedValue }) });
+    expect(await response.text()).not.toContain(submittedValue);
+    await setup;
+    expect(vault.value).toBe(JSON.stringify({ clientId: "browser-client", clientSecret: submittedValue }));
+    expect(announced.join("\n")).not.toContain(submittedValue);
+  });
+
+  it("expires an unused Windows browser setup listener without writing a vault value", async () => {
+    const vault = new MemoryVault();
+    await expect(collectWindowsCanvaCredentialsInBrowser(vault, { timeoutMs: 1, announce: () => undefined })).rejects.toMatchObject({ code: "oauth_failed" });
+    expect(vault.value).toBeUndefined();
   });
 
   it("chunks large Windows vault values and fails closed on missing or altered chunks", () => {

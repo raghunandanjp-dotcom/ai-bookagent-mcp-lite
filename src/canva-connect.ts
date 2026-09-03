@@ -201,8 +201,8 @@ export function windowsCredentialManagerScript(operation: "probe" | "get" | "set
 
 /**
  * A fixed Windows-only prompt. `Read-Host -AsSecureString` uses the normal
- * PowerShell line editor, so VS Code's usual Ctrl+V paste reaches it without
- * Node raw-mode interception. It writes only UTF-16 secret bytes to CredMan.
+ * PowerShell line editor, without Node raw-mode interception. It writes only
+ * UTF-16 secret bytes to CredMan. Windows CLI setup uses the browser flow below.
  */
 export function windowsCredentialManagerBootstrapScript(): string {
   return `$ErrorActionPreference='Stop'; Add-Type @'
@@ -220,9 +220,9 @@ public static class BookAgentBootstrapCredMan {
 }
 '@;
 $target='AI Book Agent MCP Lite Canva Connect/default';
-$clientId=(Read-Host -Prompt 'Canva client ID (visible; Ctrl+V paste supported; Enter to continue)').Trim();
+$clientId=(Read-Host -Prompt 'Canva client ID (visible; Enter to continue)').Trim();
 if([string]::IsNullOrWhiteSpace($clientId)){exit 2};
-$secret=Read-Host -Prompt 'Canva client secret (masked; Ctrl+V paste supported; Enter to continue; Ctrl+C cancels)' -AsSecureString;
+$secret=Read-Host -Prompt 'Canva client secret (masked; Enter to continue; Ctrl+C cancels)' -AsSecureString;
 $bstr=[Runtime.InteropServices.Marshal]::SecureStringToBSTR($secret); $length=[int][BookAgentBootstrapCredMan]::SysStringByteLen($bstr); if($length -eq 0){[Runtime.InteropServices.Marshal]::ZeroFreeBSTR($bstr); $secret.Dispose(); exit 2};
 $source=New-Object byte[] $length; $blob=[IntPtr]::Zero;
 try { [Runtime.InteropServices.Marshal]::Copy($bstr,$source,0,$length); $blob=[Runtime.InteropServices.Marshal]::AllocCoTaskMem($length); [Runtime.InteropServices.Marshal]::Copy($source,0,$blob,$length); $credential=New-Object BookAgentBootstrapCredMan+CREDENTIAL; $credential.Type=1; $credential.TargetName=$target; $credential.CredentialBlobSize=[uint32]$length; $credential.CredentialBlob=$blob; $credential.Persist=2; $credential.UserName='__bookagent_canva_bootstrap__:'+$clientId; if(-not [BookAgentBootstrapCredMan]::CredWrite([ref]$credential,0)){exit 2} } finally { [Array]::Clear($source,0,$source.Length); if($blob -ne [IntPtr]::Zero){$zero=New-Object byte[] $length; [Runtime.InteropServices.Marshal]::Copy($zero,0,$blob,$length); [Runtime.InteropServices.Marshal]::FreeCoTaskMem($blob)}; [Runtime.InteropServices.Marshal]::ZeroFreeBSTR($bstr); $secret.Dispose() }`;
@@ -231,6 +231,76 @@ try { [Runtime.InteropServices.Marshal]::Copy($bstr,$source,0,$length); $blob=[R
 export async function promptWindowsCredentialManagerBootstrap(runner: InteractiveCommandRunner = runInteractiveCommand): Promise<void> {
   const result = await runner("powershell.exe", ["-NoProfile", "-Command", windowsCredentialManagerBootstrapScript()]);
   if (result.exitCode !== 0) throw new CanvaConnectError("secure_storage_unavailable", false, "Canva credentials were not stored in Windows Credential Manager.");
+}
+
+export interface WindowsCanvaBrowserSetupOptions {
+  timeoutMs?: number;
+  announce?: (url: string) => void;
+}
+
+/**
+ * Collects integration credentials through a normal local browser password field.
+ * The listener is loopback-only, short-lived, and never logs or returns the secret.
+ */
+export async function collectWindowsCanvaCredentialsInBrowser(vault: CredentialVault, options: WindowsCanvaBrowserSetupOptions = {}): Promise<void> {
+  if (!await vault.available()) throw new CanvaConnectError("secure_storage_unavailable", false, "Windows Credential Manager is unavailable; Canva Connect was not configured.");
+  const timeoutMs = options.timeoutMs ?? 5 * 60_000;
+  if (!Number.isSafeInteger(timeoutMs) || timeoutMs < 1) throw new CanvaConnectError("oauth_failed", false, "The local Canva setup timeout is invalid.");
+  await new Promise<void>((resolve, reject) => {
+    let finished = false;
+    const finish = (error?: Error) => {
+      if (finished) return;
+      finished = true;
+      clearTimeout(timeout);
+      server.close(() => error ? reject(error) : resolve());
+    };
+    const server = createServer(async (request, response) => {
+      const requestUrl = new URL(request.url ?? "/", "http://127.0.0.1");
+      if (request.method === "GET" && requestUrl.pathname === "/") {
+        response.writeHead(200, { "content-type": "text/html; charset=utf-8", "cache-control": "no-store", "content-security-policy": "default-src 'none'; form-action 'self'; style-src 'unsafe-inline'" });
+        response.end("<!doctype html><title>Canva Connect setup</title><form method=post action=/configure><label>Canva client ID <input name=clientId autocomplete=off required></label><label>Canva client secret <input type=password name=clientSecret autocomplete=off required></label><button>Store securely and continue</button></form>");
+        return;
+      }
+      if (request.method !== "POST" || requestUrl.pathname !== "/configure" || !String(request.headers["content-type"] ?? "").startsWith("application/x-www-form-urlencoded")) {
+        response.writeHead(404, { "content-type": "text/plain; charset=utf-8", "cache-control": "no-store" }); response.end("Not found."); return;
+      }
+      let body = "";
+      request.setEncoding("utf8");
+      request.on("data", (chunk: string) => { body += chunk; if (Buffer.byteLength(body, "utf8") > 16 * 1024) request.destroy(); });
+      request.once("error", () => { if (!finished) finish(new CanvaConnectError("oauth_failed", false, "The local Canva setup request could not be read.")); });
+      request.once("end", async () => {
+        try {
+          const fields = new URLSearchParams(body);
+          const clientId = (fields.get("clientId") ?? "").trim();
+          const clientSecret = fields.get("clientSecret") ?? "";
+          if (!clientId || !clientSecret || clientId.length > 512 || clientSecret.length > 8_192) {
+            response.writeHead(400, { "content-type": "text/plain; charset=utf-8", "cache-control": "no-store" }); response.end("Both fields are required."); return;
+          }
+          await vault.set(JSON.stringify({ clientId, clientSecret }));
+          response.writeHead(200, { "content-type": "text/html; charset=utf-8", "cache-control": "no-store", "content-security-policy": "default-src 'none'; script-src 'unsafe-inline'" }); response.end("<!doctype html><title>Canva Connect setup</title>Credentials stored securely. Return to the terminal to continue authorization.<script>window.close()</script>");
+          finish();
+        } catch {
+          response.writeHead(500, { "content-type": "text/plain; charset=utf-8", "cache-control": "no-store" }); response.end("Credentials could not be stored securely. Return to the terminal.");
+          finish(new CanvaConnectError("secure_storage_unavailable", false, "Canva credentials could not be stored in Windows Credential Manager."));
+        }
+      });
+    });
+    const timeout = setTimeout(() => finish(new CanvaConnectError("oauth_failed", false, "Local Canva setup timed out; no credentials were stored.")), timeoutMs);
+    server.once("error", () => finish(new CanvaConnectError("oauth_failed", true, "The local Canva setup listener could not start.")));
+    server.listen(0, "127.0.0.1", () => {
+      const address = server.address();
+      if (!address || typeof address === "string") { finish(new CanvaConnectError("oauth_failed", true, "The local Canva setup listener did not provide a loopback URL.")); return; }
+      (options.announce ?? ((url) => process.stdout.write(`Open this local Canva setup URL in your browser:\n${url}\n`)))(`http://127.0.0.1:${address.port}/`);
+    });
+  });
+}
+
+export async function configureWindowsCanvaConnect(vault: CredentialVault, fetcher: FetchLike = fetch, reportDiagnostic?: (diagnostic: CanvaOAuthDiagnostic) => void, options?: WindowsCanvaBrowserSetupOptions): Promise<void> {
+  await collectWindowsCanvaCredentialsInBrowser(vault, options);
+  const bootstrap = await vault.get();
+  if (!bootstrap) throw new CanvaConnectError("secure_storage_unavailable", false, "Canva credentials are not available in Windows Credential Manager.");
+  const { clientId, clientSecret } = parseBootstrapCredentials(bootstrap);
+  await configureCanvaConnect(vault, clientId, clientSecret, fetcher, reportDiagnostic);
 }
 
 // JXA can use the Security framework, but this repository does not ship a native bridge.
