@@ -23,10 +23,16 @@ export type CanvaConnectFailureCode =
   | "import_rejected" | "import_timeout" | "import_response_invalid" | "local_pptx_unavailable";
 
 export class CanvaConnectError extends Error {
-  constructor(readonly code: CanvaConnectFailureCode, readonly retryable: boolean, message: string) {
+  constructor(readonly code: CanvaConnectFailureCode, readonly retryable: boolean, message: string, readonly diagnostic?: CanvaOAuthDiagnostic) {
     super(message);
     this.name = "CanvaConnectError";
   }
+}
+
+export interface CanvaOAuthDiagnostic {
+  phase: "token_exchange";
+  classification: "client_auth_rejected" | "request_or_grant_rejected" | "integration_access_denied" | "rate_limited" | "canva_service_error" | "transport_error" | "response_shape_invalid";
+  httpStatus?: number;
 }
 
 export interface CanvaCredentials {
@@ -241,10 +247,44 @@ export function canvaAuthorizationUrl(clientId: string, state: string, verifier:
 }
 
 type FetchLike = typeof fetch;
+
+export function classifyCanvaTokenFailure(status: number): CanvaOAuthDiagnostic {
+  if (status === 401) return { phase: "token_exchange", classification: "client_auth_rejected", httpStatus: status };
+  if (status === 400) return { phase: "token_exchange", classification: "request_or_grant_rejected", httpStatus: status };
+  if (status === 403) return { phase: "token_exchange", classification: "integration_access_denied", httpStatus: status };
+  if (status === 429) return { phase: "token_exchange", classification: "rate_limited", httpStatus: status };
+  return { phase: "token_exchange", classification: "canva_service_error", httpStatus: status };
+}
+
+function tokenDiagnosticMessage(diagnostic: CanvaOAuthDiagnostic): string {
+  if (diagnostic.classification === "client_auth_rejected") return "Canva rejected the integration's client authentication (HTTP 401). Check the client ID and secret in the Canva Developer Portal without sharing them in chat.";
+  if (diagnostic.classification === "request_or_grant_rejected") return "Canva rejected the token request or authorization grant (HTTP 400). Check the configured redirect URI and integration settings; authorization codes are single-use.";
+  if (diagnostic.classification === "integration_access_denied") return "Canva denied this integration's token request (HTTP 403). Check the integration's status, scopes, and account access in the Canva Developer Portal.";
+  if (diagnostic.classification === "rate_limited") return "Canva rate-limited the token request (HTTP 429). Wait before making another authorization attempt.";
+  if (diagnostic.classification === "transport_error") return "The local tool could not reach Canva's token endpoint. Check network connectivity and retry later.";
+  if (diagnostic.classification === "response_shape_invalid") return "Canva returned a successful token response without the expected token fields. Do not expose or paste the response; contact Canva support with the request time.";
+  return `Canva's token endpoint failed (HTTP ${diagnostic.httpStatus ?? "unknown"}). Retry later or check Canva service status.`;
+}
+
 async function tokenRequest(fetcher: FetchLike, credentials: Pick<CanvaCredentials, "clientId" | "clientSecret">, form: URLSearchParams): Promise<{ accessToken: string; refreshToken: string; expiresIn: number }> {
-  const response = await fetcher(TOKEN_URL, { method: "POST", headers: { authorization: `Basic ${Buffer.from(`${credentials.clientId}:${credentials.clientSecret}`).toString("base64")}`, "content-type": "application/x-www-form-urlencoded" }, body: form.toString() });
+  let response: Response;
+  try {
+    response = await fetcher(TOKEN_URL, { method: "POST", headers: { authorization: `Basic ${Buffer.from(`${credentials.clientId}:${credentials.clientSecret}`).toString("base64")}`, "content-type": "application/x-www-form-urlencoded" }, body: form.toString() });
+  } catch {
+    const diagnostic: CanvaOAuthDiagnostic = { phase: "token_exchange", classification: "transport_error" };
+    throw new CanvaConnectError("oauth_failed", true, tokenDiagnosticMessage(diagnostic), diagnostic);
+  }
+  // Never parse an error response: its payload can contain provider diagnostics that
+  // are not safe to place in terminal output, MCP data, or a project manifest.
+  if (!response.ok) {
+    const diagnostic = classifyCanvaTokenFailure(response.status);
+    throw new CanvaConnectError("oauth_failed", response.status === 429 || response.status >= 500, tokenDiagnosticMessage(diagnostic), diagnostic);
+  }
   const payload = await response.json().catch(() => ({})) as Record<string, unknown>;
-  if (!response.ok || typeof payload.access_token !== "string" || typeof payload.refresh_token !== "string") throw new CanvaConnectError("oauth_failed", true, "Canva authorization could not be completed. Reauthorize or try again.");
+  if (typeof payload.access_token !== "string" || typeof payload.refresh_token !== "string") {
+    const diagnostic: CanvaOAuthDiagnostic = { phase: "token_exchange", classification: "response_shape_invalid", httpStatus: response.status };
+    throw new CanvaConnectError("oauth_failed", false, tokenDiagnosticMessage(diagnostic), diagnostic);
+  }
   return { accessToken: payload.access_token, refreshToken: payload.refresh_token, expiresIn: typeof payload.expires_in === "number" ? payload.expires_in : 300 };
 }
 
@@ -385,7 +425,7 @@ export async function promptHidden(question: string): Promise<string> {
   return promptTerminal(question, true);
 }
 
-export async function configureCanvaConnect(vault: CredentialVault, clientId: string, clientSecret: string, fetcher: FetchLike = fetch): Promise<void> {
+export async function configureCanvaConnect(vault: CredentialVault, clientId: string, clientSecret: string, fetcher: FetchLike = fetch, reportDiagnostic?: (diagnostic: CanvaOAuthDiagnostic) => void): Promise<void> {
   if (!clientId || !clientSecret) throw new CanvaConnectError("oauth_failed", false, "A Canva client ID and client secret are required.");
   if (!await vault.available()) throw new CanvaConnectError("secure_storage_unavailable", false, "Secure OS credential storage is unavailable; Canva Connect was not configured.");
   const state = randomBytes(32).toString("base64url");
@@ -400,7 +440,11 @@ export async function configureCanvaConnect(vault: CredentialVault, clientId: st
         await vault.set(JSON.stringify(credentials));
         response.writeHead(200, { "content-type": "text/plain" }); response.end("Canva Connect configured. Return to the terminal.");
         server.close(); resolve();
-      } catch { response.writeHead(500, { "content-type": "text/plain" }); response.end("Authorization failed. Return to the terminal."); server.close(); reject(new CanvaConnectError("oauth_failed", true, "Canva authorization could not be completed. Reauthorize or try again.")); }
+      } catch (error) {
+        const failure = error instanceof CanvaConnectError ? error : new CanvaConnectError("oauth_failed", true, "Canva authorization could not be completed. Return to the terminal for a safe diagnostic.");
+        if (failure.diagnostic) reportDiagnostic?.(failure.diagnostic);
+        response.writeHead(500, { "content-type": "text/plain" }); response.end("Authorization failed. Return to the terminal for a safe diagnostic."); server.close(); reject(failure);
+      }
     });
     server.once("error", () => reject(new CanvaConnectError("oauth_failed", true, "The local OAuth callback port is unavailable.")));
     server.listen(3001, "127.0.0.1", () => process.stdout.write(`Open this local authorization URL in your browser:\n${authorize}\n`));

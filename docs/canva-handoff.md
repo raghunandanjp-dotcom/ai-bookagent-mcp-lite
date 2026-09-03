@@ -45,6 +45,16 @@ No token, client secret, authorization code, Authorization header, or API error 
 
 `disconnect` deletes the local vault record. Revoke the integration/token in Canva's Developer Portal as well if a device is lost, an account changes, or a secret might be exposed; then run `configure` again. Local project files retain only the resulting design ID/edit URL and normal non-secret workflow metadata.
 
+## Safe OAuth diagnostics
+
+The local terminal never prints Canva's token response body, authorization code, request headers, or credential values. If the token exchange fails after the loopback callback, it emits only a structured non-secret diagnostic with `phase: "token_exchange"`, an HTTP status when one exists, and one of these classifications:
+
+- `client_auth_rejected` (`401`): the integration's client authentication was rejected. Inspect the client ID/secret in the Developer Portal without pasting them into chat or logs.
+- `request_or_grant_rejected` (`400`): the redirect/integration configuration or one-time authorization grant was rejected. Confirm the exact registered redirect URI; a new browser authorization is needed for a new code.
+- `integration_access_denied` (`403`), `rate_limited` (`429`), `canva_service_error` (`5xx`), `transport_error`, or `response_shape_invalid`.
+
+This classification deliberately cannot identify Canva's provider-specific error code because that would require retaining or printing an error payload. The request uses Canva's documented `POST /rest/v1/oauth/token`, `application/x-www-form-urlencoded` body, Basic `{client_id}:{client_secret}` authentication, authorization code, PKCE verifier, and redirect URI.
+
 ## Failure contract and residual risks
 
 The import command returns a structured non-secret result:

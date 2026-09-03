@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import {
   NativeCredentialVault,
   canvaAuthorizationUrl,
+  classifyCanvaTokenFailure,
   exchangeAuthorizationCode,
   importApprovedCanvaPptx,
   parseBootstrapCredentials,
@@ -57,6 +58,9 @@ describe("local Canva Connect", () => {
     expect(script).toContain("-AsSecureString");
     expect(script).toContain("CredWrite");
     expect(script).toContain("Ctrl+V paste supported");
+    expect(script).toContain("SysStringByteLen");
+    expect(windowsCredentialManagerScript("get")).toContain("Unicode.GetString");
+    expect(script).toContain("__bookagent_canva_bootstrap__:");
     expect(script).not.toContain("actual-secret");
     expect(parseBootstrapCredentials(JSON.stringify({ clientId: "client", clientSecret: "secret" }))).toEqual({ clientId: "client", clientSecret: "secret" });
   });
@@ -69,6 +73,21 @@ describe("local Canva Connect", () => {
     }, "client", "not-in-output", "code", "verifier");
     expect(headers[0]).toMatch(/^Basic /u);
     expect(credentials).toMatchObject({ clientId: "client", refreshToken: "refresh", accessToken: "access" });
+  });
+
+  it("classifies a token failure by HTTP status without parsing or exposing its error payload", async () => {
+    expect(classifyCanvaTokenFailure(401)).toEqual({ phase: "token_exchange", classification: "client_auth_rejected", httpStatus: 401 });
+    try {
+      await exchangeAuthorizationCode(async () => new Response(JSON.stringify({ message: "provider-body-must-not-appear" }), { status: 401 }), "client", "secret", "code", "verifier");
+      throw new Error("expected token exchange to fail");
+    } catch (error) {
+      expect(error).toMatchObject({
+        code: "oauth_failed",
+        retryable: false,
+        diagnostic: { phase: "token_exchange", classification: "client_auth_rejected", httpStatus: 401 }
+      });
+      expect(String(error)).not.toContain("provider-body-must-not-appear");
+    }
   });
 
   it("imports only a freshly generated approved PPTX and records a genuine editable Canva URL", async () => {

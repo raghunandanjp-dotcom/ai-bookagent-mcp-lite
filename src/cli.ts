@@ -69,7 +69,13 @@ if (command === "canva") {
       clientId = await promptVisible("Canva client ID (visible; Enter to continue, Ctrl+C to cancel): ");
       clientSecret = await promptHidden("Canva client secret (hidden; type it, then press Enter; Ctrl+C to cancel): ");
     }
-    await configureCanvaConnect(vault, clientId, clientSecret);
+    try {
+      await configureCanvaConnect(vault, clientId, clientSecret, fetch, (diagnostic) => process.stderr.write(`${JSON.stringify({ outcome: "failed", code: "oauth_failed", diagnostic })}\n`));
+    } catch (error) {
+      if (error instanceof Error) process.stderr.write(`${JSON.stringify({ outcome: "failed", code: "oauth_failed", message: error.message })}\n`);
+      process.exitCode = 1;
+      process.exit();
+    }
     canvaResult = { configured: true };
   } else if (projectDir === "status") canvaResult = await canvaConnectStatus(vault);
   else if (projectDir === "disconnect") { await vault.remove(); canvaResult = { disconnected: true }; }
