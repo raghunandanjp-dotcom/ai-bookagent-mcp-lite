@@ -1,4 +1,4 @@
-import { mkdtemp, rm } from "node:fs/promises";
+import { access, mkdtemp, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -168,14 +168,26 @@ describe("local Canva Connect", () => {
     const vault = new MemoryVault();
     vault.value = JSON.stringify({ clientId: "client", clientSecret: "secret", refreshToken: "refresh" });
     const calls: Array<{ url: string; contentType?: string }> = [];
+    let polls = 0;
     const result = await importApprovedCanvaPptx(projectDir, vault, async (url, init) => {
       calls.push({ url: String(url), contentType: (init?.headers as Record<string, string> | undefined)?.["content-type"] });
       if (String(url).endsWith("/oauth/token")) return new Response(JSON.stringify({ access_token: "access", refresh_token: "new-refresh", expires_in: 300 }), { status: 200 });
       if (String(url).endsWith("/imports")) return new Response(JSON.stringify({ job: { id: "job-1" } }), { status: 200 });
+      if (polls++ < 20) return new Response(JSON.stringify({ job: { status: "in_progress" } }), { status: 200 });
       return new Response(JSON.stringify({ job: { status: "success", result: { designs: [{ id: "DAGabc", urls: { edit_url: "https://www.canva.com/api/design/opaque-return-token/edit" } }] } } }), { status: 200 });
     }, async () => undefined);
-    expect(result).toMatchObject({ outcome: "success", designId: "DAGabc", pageCount: design.pages.length, pptxSha256: expect.stringMatching(/^[a-f0-9]{64}$/u) });
+    expect(result).toMatchObject({ outcome: "failed", code: "import_timeout" });
+    const pendingProject = await (await import("../src/project.ts")).loadProject(projectDir);
+    expect(pendingProject.canva.pendingImport).toMatchObject({ jobId: "job-1", pptxSha256: expect.stringMatching(/^[a-f0-9]{64}$/u) });
+    await expect(access(path.join(projectDir, pendingProject.canva.pendingImport!.relativePath!))).resolves.toBeUndefined();
+    const resumed = await importApprovedCanvaPptx(projectDir, vault, async (url, init) => {
+      calls.push({ url: String(url), contentType: (init?.headers as Record<string, string> | undefined)?.["content-type"] });
+      return new Response(JSON.stringify({ job: { status: "success", result: { designs: [{ id: "DAGabc", urls: { edit_url: "https://www.canva.com/api/design/opaque-return-token/edit" } }] } } }), { status: 200 });
+    }, async () => undefined);
+    expect(resumed).toMatchObject({ outcome: "success", designId: "DAGabc", pageCount: design.pages.length, pptxSha256: expect.stringMatching(/^[a-f0-9]{64}$/u) });
     expect(calls).toEqual(expect.arrayContaining([expect.objectContaining({ url: expect.stringMatching(/\/imports$/u), contentType: "application/octet-stream" })]));
+    expect(calls.filter((call) => /\/imports$/u.test(call.url))).toHaveLength(1);
+    await expect(access(path.join(projectDir, pendingProject.canva.pendingImport!.relativePath!))).rejects.toMatchObject({ code: "ENOENT" });
     expect(vault.value).toContain("new-refresh");
   }, 20_000);
 
