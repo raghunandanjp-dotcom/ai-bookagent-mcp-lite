@@ -13,6 +13,7 @@ import {
   exchangeAuthorizationCode,
   importApprovedCanvaPptx,
   parseBootstrapCredentials,
+  canvaConnectionRequiredMessage,
   promptWindowsCredentialManagerBootstrap,
   reassembleWindowsVaultValue,
   trustedEditUrl,
@@ -42,6 +43,14 @@ const content = {
 describe("local Canva Connect", () => {
   let projectDir: string;
   afterEach(async () => { if (projectDir) await rm(projectDir, { recursive: true, force: true }); });
+
+  it("explains the connected-account prerequisite without asking the user to supply an OAuth token", () => {
+    const message = canvaConnectionRequiredMessage();
+    expect(message).toContain("Canva generation requires a connected Canva account");
+    expect(message).toContain("ai-bookagent canva configure");
+    expect(message).toContain("obtains and securely stores the OAuth token");
+    expect(message).toContain("do not paste a token or client secret into chat, an MCP prompt, or the project");
+  });
 
   it("uses PKCE and only the direct-import scopes", () => {
     const url = new URL(canvaAuthorizationUrl("client-id", "state", "verifier"));

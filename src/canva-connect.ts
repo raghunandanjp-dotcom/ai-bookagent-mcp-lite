@@ -397,9 +397,14 @@ export async function exchangeAuthorizationCode(fetcher: FetchLike, clientId: st
   return { clientId, clientSecret, refreshToken: token.refreshToken, accessToken: token.accessToken, accessTokenExpiresAt: new Date(Date.now() + token.expiresIn * 1000).toISOString() };
 }
 
+/** User-facing prerequisite for the optional local Canva handoff. */
+export function canvaConnectionRequiredMessage(): string {
+  return "Canva generation requires a connected Canva account. Before importing this approved PPTX, run `ai-bookagent canva configure` in a terminal to connect your Canva Public Integration. The local setup obtains and securely stores the OAuth token; do not paste a token or client secret into chat, an MCP prompt, or the project.";
+}
+
 async function accessToken(vault: CredentialVault, fetcher: FetchLike): Promise<string> {
   const stored = await vault.get();
-  if (!stored) throw new CanvaConnectError("not_configured", false, "Canva Connect is not configured. Run `ai-bookagent canva configure` in a terminal.");
+  if (!stored) throw new CanvaConnectError("not_configured", false, canvaConnectionRequiredMessage());
   const credentials = parseStoredCredentials(stored);
   if (credentials.accessToken && credentials.accessTokenExpiresAt && Date.parse(credentials.accessTokenExpiresAt) > Date.now() + 30_000) return credentials.accessToken;
   const token = await tokenRequest(fetcher, credentials, new URLSearchParams({ grant_type: "refresh_token", refresh_token: credentials.refreshToken }));
