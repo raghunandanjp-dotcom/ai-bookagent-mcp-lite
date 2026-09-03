@@ -86,29 +86,11 @@ Optional-format failures preserve successful artifacts and produce a `partially_
 
 PPTX uses the canonical cover, poem, fun-fact, activity, and optional closing-page sequence. It preserves editable book text and stores image alternative text in DrawingML. Kannada PPTX records a warning because `Noto Sans Kannada` is referenced but not embedded.
 
-## `check_canva_readiness`
+## Advanced local Canva Connect CLI
 
-Records host-reported `ready`, `unavailable`, or `authorization_required` state plus optional adapter metadata. It sends no book content. Unavailable and unauthorized states return distinct recovery guidance.
+Canva credentials are intentionally unavailable to MCP tools and normal tool parameters. The optional direct-import path is exposed only through the local terminal commands documented in [Canva handoff](canva-handoff.md): `canva configure`, `status`, `disconnect`, `consent <project-dir>`, and `import <project-dir>`.
 
-## `confirm_canva_handoff`
-
-Persists explicit approval or decline for the current approved source revision, design revision, and illustration-set digest. A Canva template selection is not required for faithful reproduction.
-
-## `select_canva_design`
-
-Optional. Records a Canva design/template choice and changes the handoff mode to `explicit_redesign_requested`. The normal mode is faithful canonical reproduction without template selection.
-
-## `prepare_canva_handoff`
-
-Returns the approved `BookDesign` page plan in a versioned, adapter-neutral `create_editable_design` envelope with project/revision correlation, theme, format profile, exact approved assets, source revision, design revision, illustration digest, readiness evidence, and the timestamp of explicit consent. Full approval, provenance, licensing, byte-count, and checksum records travel with each asset. Default mode is `faithful_canonical_reproduction`. It does not call Canva itself. Adapters must report unavoidable exceptions and fail explicitly if editable Kannada cannot be preserved.
-
-## `prepare_canva_import_artifact`
-
-Accepts the neutral handoff returned by `prepare_canva_handoff`, revalidates it against the current approved local `BookDesign`, accepted DOCX, readiness/consent evidence, and every checksum-bound illustration byte, and writes a self-contained private HTML presentation under the project's `canva` directory. The result supplies the current Canva connector's `import_design_from_url` capability arguments using `design_file`; no public URL is created or required. Each canonical page is marked with `data-document-role="page"`, text remains editable, exact approved image bytes are embedded, and the full handoff metadata remains inside the artifact. The adapter returns a discriminated `ready` or `failed` result with a stable code and retryability. It rejects stale or altered payloads, asset substitution, template selection, and `explicit_redesign_requested` mode.
-
-## `record_canva_result`
-
-Accepts a discriminated `success` or `failed` result. Failures persist a code, safe message, retryability, and timestamp. Success requires parity metadata matching the approved source revision, design revision, illustration-set digest, and page count. A canonical HTTPS Canva `/design/{designId}/edit` URL is retained unchanged. The private-file connector may instead return a Canva-owned `/d/{token}` short URL alongside a separate design ID; that exact narrow shape is retained as `connectorUrl` while the validated design ID is used to form the canonical edit URL. Other hosts, paths, credentials, protocols, and mismatched canonical design paths remain rejected.
+The one-time setup uses a user-created Canva Public Integration, OAuth authorization-code PKCE and the local loopback callback. `consent` records a fresh per-book authorization. `import` regenerates the canonical PPTX itself, validates the current source/design revisions, page count, full approved-illustration digest, accepted DOCX, and generated PPTX SHA-256 before direct binary API import. It rejects supplied file paths, public URLs, templates, and redesign routes. It returns only a structured non-secret failure or a successful Canva design ID/edit URL after response parity checks. See the platform-specific fail-closed credential-storage policy in [Canva handoff](canva-handoff.md).
 
 ## `get_delivery_summary`
 

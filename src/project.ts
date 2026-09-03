@@ -81,6 +81,16 @@ export interface CanvaDesignSelection {
   designRevision?: number;
 }
 
+export interface CanvaPendingImport {
+  jobId: string;
+  sourceRevision: number;
+  designRevision: number;
+  illustrationSetDigest: string;
+  pageCount: number;
+  pptxSha256: string;
+  startedAt: string;
+}
+
 export interface ExportFailure {
   format: "docx" | "pptx" | "pdf";
   code: string;
@@ -100,6 +110,7 @@ export interface CanvaState {
   connectorUrl?: string;
   failure?: { code: string; message: string; retryable: boolean; failedAt: string };
   selection?: CanvaDesignSelection;
+  pendingImport?: CanvaPendingImport;
   sourceRevision?: number;
   designRevision?: number;
   illustrationSetDigest?: string;
@@ -129,6 +140,15 @@ const canvaStateSchema = z.object({
     selectedAt: z.string().datetime(),
     sourceRevision: z.number().int().positive(),
     designRevision: z.number().int().positive().optional()
+  }).optional(),
+  pendingImport: z.object({
+    jobId: z.string().min(1),
+    sourceRevision: z.number().int().positive(),
+    designRevision: z.number().int().positive(),
+    illustrationSetDigest: z.string().regex(/^[a-f0-9]{64}$/u),
+    pageCount: z.number().int().positive(),
+    pptxSha256: z.string().regex(/^[a-f0-9]{64}$/u),
+    startedAt: z.string().datetime()
   }).optional(),
   sourceRevision: z.number().int().positive().optional(),
   designRevision: z.number().int().positive().optional(),

@@ -12,13 +12,13 @@ ENH-0009 therefore adopts a code-native, HTML-first design workflow. Claude auth
 
 `BookDesign` is the canonical design contract. It binds the validated content `sourceRevision`, a monotonic `designRevision`, the SHA-256 digest of the exact illustration set, page order and content, theme, typography intent, format profiles, and declared format exceptions.
 
-The generated HTML preview is the human review artifact. One explicit design approval approves the page plan and complete illustration set shown in that preview. DOCX, PPTX, PDF, and the default Canva handoff are permitted only from the approved, current `BookDesign`.
+The generated HTML preview is the human review artifact. One explicit design approval approves the page plan and complete illustration set shown in that preview. DOCX, PPTX, PDF, and optional direct Canva Connect import are permitted only from the approved, current `BookDesign`.
 
 ## Format contract
 
 Outputs promise semantic parity, not pixel identity. They preserve approved page order, wording, poem breaks, illustrations, colors, typography intent, and accessibility text. A4 documents and 16:9 presentations necessarily use different geometry; unavoidable substitutions must be declared rather than silently redesigning the book.
 
-Canva defaults to `faithful_canonical_reproduction`. Choosing an existing Canva template is optional and explicitly changes the mode to `explicit_redesign_requested`; it is not part of the normal happy path.
+Advanced local Canva Connect imports the code-generated canonical PPTX directly. It does not select templates or run redesign prompts.
 
 ## Reliability and provenance
 

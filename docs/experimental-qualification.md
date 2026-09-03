@@ -60,29 +60,24 @@ invalidates the affected downstream evidence.
 
 ## Real Canva acceptance (`CAN-ACC-001`)
 
-Use the already approved canonical design and accepted current DOCX. A template
-must not be selected for the faithful-default case.
+Use the already approved canonical design and accepted current DOCX. Use the
+advanced local Canva Connect CLI; no template, connector file reference, public
+URL, or redesign path is permitted.
 
 1. Record the project ID, project revision, source revision, design revision,
    illustration-set digest, page count, and canonical preview digest.
-2. Run readiness without sending book content. Record the host/adapter identity,
-   time, and reported state. If unavailable or authorization is required, follow
-   the returned setup instructions and pause as `blocked`; do not call that a
-   connector failure or success.
-3. When readiness is `ready`, show the user the exact approved source revision,
-   design revision, illustration digest, operation, and destination account.
-   Persist explicit consent. A previous consent is invalid after any bound value
-   changes.
-4. Prepare and save the neutral handoff. Confirm mode is
-   `faithful_canonical_reproduction`, `selectedDesign` is absent, every page is
-   present in order, every required approved asset appears once with the expected
-   digest, and the correlation/parity fields match step 1. Record the handoff
-   digest.
-5. Invoke the authorized Canva connector once and save a redacted receipt. On
-   failure, record the structured code/message/retryability and resume according
-   to the state model. On success, require matching source revision, design
-   revision, illustration digest, page count, design ID, and an HTTPS Canva URL
-   whose path is `/design/{designId}/edit`.
+2. Run `ai-bookagent canva status` on a supported local platform. If secure
+   storage is unavailable, pause as blocked; do not use a plaintext workaround.
+3. When configured, show the user the exact approved source revision, design
+   revision, illustration digest, operation, and destination account. Run the
+   separate explicit `ai-bookagent canva consent <project-dir>` action. A prior
+   consent is invalid after any bound value changes.
+4. Run `ai-bookagent canva import <project-dir>`. Confirm it regenerated a PPTX,
+   bound its SHA-256 to the approved source/design/digest/page plan, and used the
+   direct binary import route. Save only the redacted outcome.
+5. On success, require matching source revision, design revision, illustration
+   digest, page count, design ID, and an HTTPS Canva URL whose path is
+   `/design/{designId}/edit`.
 6. Open the returned URL while signed into the intended account. Confirm it
    resolves to the same design and permits editing; a reversible edit followed
    by undo is sufficient. URL-shape validation alone does not pass this step.

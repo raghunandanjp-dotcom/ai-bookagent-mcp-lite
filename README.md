@@ -14,12 +14,12 @@ Stable for the release candidate:
 - Existing PNG/JPEG artwork with provenance, license, dimensions, and checksum records
 - An HTML-first design review followed by local DOCX, PPTX, and PDF generation
 - Resumable project state, two creature-list regenerations, and two DOCX reworks
-- Optional, consent-gated, adapter-neutral Canva handoff
+- Optional, consent-gated advanced local Canva Connect import (Windows Credential Manager or Linux libsecret in v1)
 
 Experimental or externally gated:
 
 - Kannada authoring requires a fluent human language review and rendered-glyph review. Kannada PDF also requires a locally configured Kannada TTF font.
-- Canva completion requires a compatible authorized host adapter; this server does not perform OAuth or call Canva itself.
+- Advanced Canva Connect mode requires a user-created Public Integration, local secure credential storage, and an explicit terminal consent. It is not needed for normal books.
 - DOCX/PPTX reference rendering for release QA requires LibreOffice and Poppler. They are not required to create the files.
 
 Not supported: unattended factual publication, arbitrary SVG/HTML, cloud storage, built-in OAuth, or a hosted MCP endpoint. Fun facts remain review items unless a human or approved source supports them.
@@ -92,10 +92,28 @@ choose age and language
   → generate and review the DOCX
   → accept or rework the DOCX
   → optionally generate PPTX/PDF
-  → optionally authorize and consent to Canva handoff
+  → optionally use advanced local Canva Connect import
 ```
 
 Generated content, SVG sources, raster assets, design files, exports, checksums, and resumable state remain inside the selected project directory. Review the HTML and DOCX visually; the server's validation is not a substitute for editorial, factual, language, or accessibility judgment.
+
+## Canva Connect feasibility proof
+
+The repository includes a deliberately narrow local proof harness for validating Canva's direct binary PPTX import before any book handoff is implemented. It generates a synthetic two-slide PPTX only; it never reads a book project or sends book content. Configure a **Public** Canva integration with `design:content:write` and `design:meta:read`, and register this exact redirect URI:
+
+```text
+http://127.0.0.1:3001/oauth/callback
+```
+
+Generate the client secret in Canva and keep it private. In a PowerShell session, set it only for that process (never commit it or paste it into chat), then start the harness:
+
+```powershell
+$env:CANVA_CLIENT_ID = "your-client-id"
+$env:CANVA_CLIENT_SECRET = "your-client-secret"
+npm run canva:proof
+```
+
+Open `http://127.0.0.1:3001/`, authorize the account, and inspect the returned Canva design. Passing requires two separate pages, editable text, a movable image, and an editable shape. A passing proof establishes only Canva API/PPTX capability; it does not authorize the transfer of a book or replace the project parity gates.
 
 ## CLI quick reference
 
@@ -129,14 +147,14 @@ The CLI accepts relative project directories and resolves them from the current 
 - Rework makes prior artifacts stale and requires a fresh design approval
 - PDF/DOCX/PPTX preserve the canonical closing page when a non-empty closing note exists
 - PPTX text remains editable; Kannada decks reference but do not embed `Noto Sans Kannada`
-- A Canva success is recorded only when a real HTTPS edit URL and matching revision/page metadata are returned
+- A Canva success is recorded only after direct binary import returns a real HTTPS edit URL matching the imported design ID and current revision/page metadata
 
 See [Poem structure](docs/poem-structure.md), [Canonical BookDesign](docs/canonical-book-design.md), [DOCX](docs/docx-generation.md), [PPTX](docs/pptx-generation.md), [PDF](docs/pdf-generation.md), and [Canva handoff](docs/canva-handoff.md) for the detailed contracts.
 
 ## Privacy and security
 
 - Book projects and exports are local unless the user explicitly consents to an external handoff.
-- The server does not require a paid model API token, store Canva OAuth credentials, or upload files by itself.
+- The standard server does not require Canva configuration. The separate advanced local CLI keeps Canva OAuth credentials in supported OS secure storage only; it never accepts them through MCP/chat or stores them in a book project.
 - User source material is delimited as data-only in prompts; model output, paths, filenames, SVG, image files, and connector results are treated as untrusted.
 - SVG is restricted to a non-executable shape/path allowlist. Raster assets are signature-, dimension-, checksum-, and containment-validated.
 - The process has the same local permissions as the account that launches Claude Desktop. Choose a dedicated project directory and review every requested tool call.
@@ -170,9 +188,9 @@ Close the reviewed file in Word, LibreOffice, preview software, and sync tools, 
 
 Set `BOOK_AGENT_KANNADA_FONT_PATH` in an uncommitted `.env` file to an appropriate Kannada-capable TTF. Install `Noto Sans Kannada` for DOCX/PPTX viewers and obtain fluent human language and glyph review.
 
-**Canva is unavailable or asks for authorization**
+**Canva Connect is unavailable or asks for authorization**
 
-Complete setup in the host adapter, rerun the readiness check, and consent only after local DOCX acceptance. This MCP never invents a Canva link.
+This is optional advanced local mode. Read [Canva handoff](docs/canva-handoff.md); configure your own Public Integration in an interactive terminal and consent only after local DOCX acceptance. This MCP never asks for or exposes a Canva secret.
 
 ## Release status
 

@@ -19,6 +19,7 @@ import {
   updateCreatureSelection
 } from "./workflow.ts";
 import { loadProject } from "./project.ts";
+import { NativeCredentialVault, canvaConnectStatus, configureCanvaConnect, configureWindowsCanvaConnect, consentToLocalCanvaImport, importApprovedCanvaPptx, promptHidden, promptVisible } from "./canva-connect.ts";
 
 function usage(): never {
   console.error(`Usage:
@@ -36,7 +37,12 @@ function usage(): never {
   ai-bookagent export <project-dir> [docx,pptx,pdf]
   ai-bookagent accept-docx <project-dir>
   ai-bookagent rework <project-dir> <content.json>
-  ai-bookagent summary <project-dir>`);
+  ai-bookagent summary <project-dir>
+  ai-bookagent canva configure
+  ai-bookagent canva status
+  ai-bookagent canva disconnect
+  ai-bookagent canva consent <project-dir>
+  ai-bookagent canva import <project-dir>`);
   process.exit(2);
 }
 
@@ -46,6 +52,33 @@ async function jsonFile(filePath: string): Promise<unknown> {
 
 const [, , command, projectDir, argument, flag] = process.argv;
 if (!command || !projectDir) usage();
+
+if (command === "canva") {
+  const vault = new NativeCredentialVault();
+  let canvaResult: unknown;
+  if (projectDir === "configure") {
+    try {
+      if (process.platform === "win32") {
+        await configureWindowsCanvaConnect(vault, fetch, (diagnostic) => process.stderr.write(`${JSON.stringify({ outcome: "failed", code: "oauth_failed", diagnostic })}\n`));
+      } else {
+        const clientId = await promptVisible("Canva client ID (visible; Enter to continue, Ctrl+C to cancel): ");
+        const clientSecret = await promptHidden("Canva client secret (hidden; type it, then press Enter; Ctrl+C to cancel): ");
+        await configureCanvaConnect(vault, clientId, clientSecret, fetch, (diagnostic) => process.stderr.write(`${JSON.stringify({ outcome: "failed", code: "oauth_failed", diagnostic })}\n`));
+      }
+      canvaResult = { configured: true };
+    } catch (error) {
+      if (error instanceof Error) process.stderr.write(`${JSON.stringify({ outcome: "failed", code: "oauth_failed", message: error.message })}\n`);
+      process.exitCode = 1;
+      process.exit();
+    }
+  } else if (projectDir === "status") canvaResult = await canvaConnectStatus(vault);
+  else if (projectDir === "disconnect") { await vault.remove(); canvaResult = { disconnected: true }; }
+  else if (projectDir === "consent" && argument) canvaResult = await consentToLocalCanvaImport(path.resolve(argument));
+  else if (projectDir === "import" && argument) canvaResult = await importApprovedCanvaPptx(path.resolve(argument), vault);
+  else usage();
+  process.stdout.write(`${JSON.stringify(canvaResult, null, 2)}\n`);
+  process.exit(0);
+}
 const absoluteProjectDir = path.resolve(projectDir);
 
 let result: unknown;
