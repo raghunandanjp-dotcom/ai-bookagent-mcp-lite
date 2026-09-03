@@ -144,6 +144,20 @@ describe("approved illustration workflow", () => {
     expect((await loadProject(projectDir)).illustrations).toEqual([]);
   }, 2_000);
 
+  it("rejects a substituted ICNS, JXL, or HEIF asset before downstream export parsing", async () => {
+    const { projectDir, source } = await preparedProject();
+    await importAndApproveIllustrations(projectDir, source);
+    const project = await loadProject(projectDir);
+    const beforeProject = await readFile(path.join(projectDir, "book-project.json"));
+    const cover = project.illustrations.find((asset) => asset.role === "cover")!;
+
+    for (const [format, data] of Object.entries(unsupportedParserInputs)) {
+      await writeFile(resolveInside(projectDir, cover.relativePath), data);
+      await expect(createBookDesignPreview(projectDir)).rejects.toThrow(/missing, unreadable, or corrupt/i);
+      expect(await readFile(path.join(projectDir, "book-project.json"))).toEqual(beforeProject);
+    }
+  }, 2_000);
+
   it("reports missing, unexpected, and digest-mismatched approved illustration sets", async () => {
     const { projectDir, source } = await preparedProject();
 
