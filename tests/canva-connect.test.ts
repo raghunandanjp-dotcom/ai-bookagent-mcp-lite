@@ -1,4 +1,4 @@
-import { mkdtemp, rm } from "node:fs/promises";
+import { access, mkdtemp, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -13,6 +13,7 @@ import {
   exchangeAuthorizationCode,
   importApprovedCanvaPptx,
   parseBootstrapCredentials,
+  canvaConnectionRequiredMessage,
   promptWindowsCredentialManagerBootstrap,
   reassembleWindowsVaultValue,
   trustedEditUrl,
@@ -42,6 +43,14 @@ const content = {
 describe("local Canva Connect", () => {
   let projectDir: string;
   afterEach(async () => { if (projectDir) await rm(projectDir, { recursive: true, force: true }); });
+
+  it("explains the connected-account prerequisite without asking the user to supply an OAuth token", () => {
+    const message = canvaConnectionRequiredMessage();
+    expect(message).toContain("Canva generation requires a connected Canva account");
+    expect(message).toContain("ai-bookagent canva configure");
+    expect(message).toContain("obtains and securely stores the OAuth token");
+    expect(message).toContain("do not paste a token or client secret into chat, an MCP prompt, or the project");
+  });
 
   it("uses PKCE and only the direct-import scopes", () => {
     const url = new URL(canvaAuthorizationUrl("client-id", "state", "verifier"));
@@ -168,6 +177,9 @@ describe("local Canva Connect", () => {
       return new Response(JSON.stringify({ job: { status: "success", result: { designs: [{ id: "DAGabc", urls: { edit_url: "https://www.canva.com/api/design/opaque-return-token/edit" } }] } } }), { status: 200 });
     }, async () => undefined);
     expect(result).toMatchObject({ outcome: "failed", code: "import_timeout" });
+    const pendingProject = await (await import("../src/project.ts")).loadProject(projectDir);
+    expect(pendingProject.canva.pendingImport).toMatchObject({ jobId: "job-1", pptxSha256: expect.stringMatching(/^[a-f0-9]{64}$/u) });
+    await expect(access(path.join(projectDir, pendingProject.canva.pendingImport!.relativePath!))).resolves.toBeUndefined();
     const resumed = await importApprovedCanvaPptx(projectDir, vault, async (url, init) => {
       calls.push({ url: String(url), contentType: (init?.headers as Record<string, string> | undefined)?.["content-type"] });
       return new Response(JSON.stringify({ job: { status: "success", result: { designs: [{ id: "DAGabc", urls: { edit_url: "https://www.canva.com/api/design/opaque-return-token/edit" } }] } } }), { status: 200 });
@@ -175,6 +187,7 @@ describe("local Canva Connect", () => {
     expect(resumed).toMatchObject({ outcome: "success", designId: "DAGabc", pageCount: design.pages.length, pptxSha256: expect.stringMatching(/^[a-f0-9]{64}$/u) });
     expect(calls).toEqual(expect.arrayContaining([expect.objectContaining({ url: expect.stringMatching(/\/imports$/u), contentType: "application/octet-stream" })]));
     expect(calls.filter((call) => /\/imports$/u.test(call.url))).toHaveLength(1);
+    await expect(access(path.join(projectDir, pendingProject.canva.pendingImport!.relativePath!))).rejects.toMatchObject({ code: "ENOENT" });
     expect(vault.value).toContain("new-refresh");
   }, 20_000);
 

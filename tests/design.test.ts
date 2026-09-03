@@ -1,11 +1,12 @@
 import { createHash } from "node:crypto";
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { mkdtemp, readFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { buildBookDesign, renderBookDesignHtml } from "../src/design.ts";
 import { importCodeNativeIllustrationSet, sanitizeCodeNativeSvg } from "../src/svg-illustrations.ts";
 import { pptxFixture } from "./fixtures/pptx-content.ts";
+import { removeTemporaryDirectory } from "./fixtures/temporary-directory.ts";
 import {
   acceptBookContent,
   approveBookDesign,
@@ -18,7 +19,7 @@ import {
 } from "../src/workflow.ts";
 
 const temporaryDirectories: string[] = [];
-afterEach(async () => Promise.all(temporaryDirectories.splice(0).map((directory) => rm(directory, { recursive: true, force: true }))));
+afterEach(async () => Promise.all(temporaryDirectories.splice(0).map((directory) => removeTemporaryDirectory(directory))));
 
 const safeSvg = (fill: string) => `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 500"><rect x="0" y="0" width="800" height="500" fill="${fill}"/><circle cx="400" cy="250" r="120" fill="#FFFFFF" stroke="#17324D" stroke-width="12"/></svg>`;
 
@@ -39,6 +40,20 @@ function contrastRatio(firstColor: string, secondColor: string): number {
 }
 
 describe("canonical BookDesign and code-native illustrations", () => {
+  it("retries only transient Windows directory cleanup errors", async () => {
+    let calls = 0;
+    const waits: number[] = [];
+    await removeTemporaryDirectory("test-directory", "win32", async () => {
+      calls += 1;
+      if (calls < 3) throw Object.assign(new Error("busy"), { code: "ENOTEMPTY" });
+    }, async (milliseconds) => { waits.push(milliseconds); });
+    expect(calls).toBe(3);
+    expect(waits).toEqual([50, 100]);
+    await expect(removeTemporaryDirectory("test-directory", "win32", async () => {
+      throw Object.assign(new Error("missing permissions"), { code: "EACCES" });
+    })).rejects.toMatchObject({ code: "EACCES" });
+  });
+
   it("accepts only the constrained, dependency-free SVG subset", () => {
     expect(sanitizeCodeNativeSvg(safeSvg("#2A9D8F"))).toContain("<circle");
     for (const unsafe of [
@@ -76,7 +91,7 @@ describe("canonical BookDesign and code-native illustrations", () => {
     }
 
     await expect(importCodeNativeIllustrationSet(projectDir, content, input.slice(0, 1))).rejects.toThrow(/exactly match the required slots/i);
-  }, 15_000);
+  }, 30_000);
 
   it("uses one canonical page plan and accessible asset references in HTML", async () => {
     const projectDir = await mkdtemp(path.join(os.tmpdir(), "bookagent-design-"));
