@@ -272,9 +272,9 @@ export async function importApprovedCanvaPptx(projectDir: string, vault: Credent
   }
 }
 
-export function maskedSecretFeedback(length: number): string {
+export function secretReceivedAcknowledgement(length: number): string {
   const safeLength = Math.max(0, Math.floor(length));
-  return safeLength === 0 ? "" : `${"•".repeat(Math.min(safeLength, 32))} (${safeLength} characters)`;
+  return `Secret received (${safeLength} characters).`;
 }
 
 async function promptTerminal(question: string, sensitive: boolean): Promise<string> {
@@ -285,13 +285,16 @@ async function promptTerminal(question: string, sensitive: boolean): Promise<str
   return new Promise((resolve, reject) => {
     let answer = "";
     const wasRaw = process.stdin.isRaw;
-    const redrawSecret = () => process.stdout.write(`\u001b[2K\r${question}${maskedSecretFeedback(answer.length)}`);
     const finish = (error?: Error) => {
       process.stdin.off("data", onData);
       process.stdin.setRawMode(wasRaw);
       process.stdin.pause();
       process.stdout.write("\n");
-      if (error) reject(error); else resolve(answer.trim());
+      if (error) reject(error);
+      else {
+        if (sensitive) process.stdout.write(`${secretReceivedAcknowledgement(answer.length)}\n`);
+        resolve(answer.trim());
+      }
     };
     const onData = (chunk: Buffer) => {
       for (const character of chunk.toString("utf8")) {
@@ -299,11 +302,11 @@ async function promptTerminal(question: string, sensitive: boolean): Promise<str
         if (character === "\u0003") { finish(new CanvaConnectError("oauth_failed", false, "Canva setup was cancelled.")); return; }
         if (character === "\u0008" || character === "\u007f") {
           answer = answer.slice(0, -1);
-          if (sensitive) redrawSecret(); else process.stdout.write("\b \b");
+          if (!sensitive) process.stdout.write("\b \b");
           continue;
         }
         answer += character;
-        if (sensitive) redrawSecret(); else process.stdout.write(character);
+        if (!sensitive) process.stdout.write(character);
       }
     };
     process.stdin.setRawMode(true);
@@ -317,7 +320,7 @@ export async function promptVisible(question: string): Promise<string> {
   return promptTerminal(question, false);
 }
 
-/** Secrets never echo. Only a bullet/count progress indicator is drawn to the interactive terminal. */
+/** Secrets never echo or redraw while typed; acknowledgement is printed only after Enter. */
 export async function promptHidden(question: string): Promise<string> {
   return promptTerminal(question, true);
 }

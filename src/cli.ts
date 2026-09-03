@@ -58,7 +58,7 @@ if (command === "canva") {
   let canvaResult: unknown;
   if (projectDir === "configure") {
     const clientId = await promptVisible("Canva client ID (visible; Enter to continue, Ctrl+C to cancel): ");
-    const clientSecret = await promptHidden("Canva client secret (masked; Enter to continue, Ctrl+C to cancel): ");
+    const clientSecret = await promptHidden("Canva client secret (hidden; type it, then press Enter; Ctrl+C to cancel): ");
     await configureCanvaConnect(vault, clientId, clientSecret);
     canvaResult = { configured: true };
   } else if (projectDir === "status") canvaResult = await canvaConnectStatus(vault);

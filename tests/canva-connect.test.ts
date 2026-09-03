@@ -7,7 +7,7 @@ import {
   canvaAuthorizationUrl,
   exchangeAuthorizationCode,
   importApprovedCanvaPptx,
-  maskedSecretFeedback,
+  secretReceivedAcknowledgement,
   windowsCredentialManagerScript,
   type CredentialVault
 } from "../src/canva-connect.ts";
@@ -41,11 +41,11 @@ describe("local Canva Connect", () => {
     expect(url.searchParams.get("code_challenge_method")).toBe("S256");
   });
 
-  it("renders only safe masked progress for a secret", () => {
-    expect(maskedSecretFeedback(0)).toBe("");
-    expect(maskedSecretFeedback(4)).toBe("•••• (4 characters)");
-    expect(maskedSecretFeedback(40)).toBe(`${"•".repeat(32)} (40 characters)`);
-    expect(maskedSecretFeedback(4)).not.toContain("secret");
+  it("acknowledges only the length after a secret is submitted", () => {
+    expect(secretReceivedAcknowledgement(0)).toBe("Secret received (0 characters).");
+    expect(secretReceivedAcknowledgement(4)).toBe("Secret received (4 characters).");
+    expect(secretReceivedAcknowledgement(40)).toBe("Secret received (40 characters).");
+    expect(secretReceivedAcknowledgement(4)).not.toContain("actual-secret");
   });
 
   it("exchanges OAuth only through a mocked HTTPS request and never puts the secret in the result", async () => {
