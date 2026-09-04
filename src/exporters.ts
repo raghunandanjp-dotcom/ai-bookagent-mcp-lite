@@ -59,6 +59,18 @@ export class DocxExportError extends Error {
   }
 }
 
+export function hasMissingPrintableGlyph(
+  layout: (value: string) => { glyphs: Array<{ id: number }> },
+  value: string
+): boolean {
+  // Fontkit emits glyph ID 0 for line, paragraph, and other control
+  // separators. Validate each printable run instead, so these layout controls
+  // do not masquerade as missing Kannada glyphs.
+  return value
+    .split(/[\p{Cc}\p{Zl}\p{Zp}]+/u)
+    .some((run) => run.length > 0 && layout(run).glyphs.some((glyph) => glyph.id === 0));
+}
+
 function isLockedOutputError(error: unknown): boolean {
   if (!(error instanceof Error) || !("code" in error)) return false;
   return error.code === "EPERM" || error.code === "EACCES";
@@ -95,6 +107,13 @@ function docxRunLanguage(language: BookContent["language"]): IRunOptions["langua
 
 function sectionTitle(value: "poem" | "funFact" | "activity"): string {
   return value === "poem" ? "Poem" : value === "funFact" ? "Fun Fact" : "Activity";
+}
+
+function pdfText(value: "cover" | "closing" | "page" | "poem" | "funFact" | "activity", language: BookContent["language"]): string {
+  if (language !== "kn") {
+    return ({ cover: "wonderful creatures", closing: "Keep Exploring", page: "Page", poem: "Poem", funFact: "Fun Fact", activity: "Activity" })[value];
+  }
+  return ({ cover: "ಅದ್ಭುತ ಜೀವಿಗಳು", closing: "ಅನ್ವೇಷಿಸುತ್ತಿರಿ", page: "ಪುಟ", poem: "ಕವನ", funFact: "ವಿಶೇಷ ಮಾಹಿತಿ", activity: "ಚಟುವಟಿಕೆ" })[value];
 }
 
 function run(text: string, content: BookContent, options: Omit<IRunOptions, "text"> = {}): TextRun {
@@ -400,9 +419,9 @@ export async function exportPdf(content: BookContent, exportDir: string, illustr
       pdf.registerFont("BookBold", boldFont!);
       pdf.font("BookRegular");
       if (content.language === "kn") {
-        const usedText = [content.title, ...content.creatures.flatMap((creature) => [creature.displayName, creature.poem.title, creature.poem.text, creature.funFact.text, creature.activity.text])].join("\n");
+        const usedText = [content.title, pdfText("cover", "kn"), pdfText("closing", "kn"), pdfText("page", "kn"), ...content.creatures.flatMap((creature) => [creature.displayName, creature.poem.title, creature.poem.text, creature.funFact.text, creature.activity.text, pdfText("poem", "kn"), pdfText("funFact", "kn"), pdfText("activity", "kn")])].join("\n");
         const internalFont = (pdf as unknown as { _font?: { font?: { layout(value: string): { glyphs: Array<{ id: number }> } } } })._font?.font;
-        if (internalFont?.layout(usedText).glyphs.some((glyph) => glyph.id === 0)) throw new PdfExportError("pdf_glyph_missing", "The configured Kannada font does not cover every character used by this book.");
+        if (internalFont && hasMissingPrintableGlyph((value) => internalFont.layout(value), usedText)) throw new PdfExportError("pdf_glyph_missing", "The configured Kannada font does not cover every printable character used by this book.");
       }
     } catch (error) {
       reject(error instanceof PdfExportError ? error : new PdfExportError("pdf_font_invalid", `PDF font could not be loaded: ${String(error)}`));
@@ -419,18 +438,19 @@ export async function exportPdf(content: BookContent, exportDir: string, illustr
       if (creatureName && section) {
         pdf.font("BookRegular").fillColor("#68737D").fontSize(10).text(`${creatureName} · ${section}`, PDF.margin, 30, { width: pdf.page.width - 2 * PDF.margin });
       }
-      pdf.font("BookRegular").fillColor("#68737D").fontSize(9).text(`${content.title} · Page ${pageNumber} of ${totalPages}`, PDF.margin, pdf.page.height - PDF.margin - 12, { width: pdf.page.width - 2 * PDF.margin, height: 12, align: "center", lineBreak: false });
+      const pageLabel = content.language === "kn" ? `${content.title} · ${pdfText("page", "kn")} ${pageNumber} / ${totalPages}` : `${content.title} · Page ${pageNumber} of ${totalPages}`;
+      pdf.font("BookRegular").fillColor("#68737D").fontSize(9).text(pageLabel, PDF.margin, pdf.page.height - PDF.margin - 12, { width: pdf.page.width - 2 * PDF.margin, height: 12, align: "center", lineBreak: false });
     };
     addPage(1);
     pdf.font("BookBold").fillColor(`#${COLORS.navy}`).fontSize(30).text(content.title, PDF.margin, 70, { width: pdf.page.width - 2 * PDF.margin, align: "center" });
     taggedPdfImage(pdf, illustrations.cover, PDF.margin, 145, { fit: [pdf.page.width - 2 * PDF.margin, 480], align: "center", valign: "center" });
-    pdf.font("BookRegular").fillColor(`#${COLORS.teal}`).fontSize(16).text(`${content.creatures.length} wonderful creatures`, PDF.margin, 665, { width: pdf.page.width - 2 * PDF.margin, align: "center" });
+    pdf.font("BookRegular").fillColor(`#${COLORS.teal}`).fontSize(16).text(`${content.creatures.length} ${pdfText("cover", content.language)}`, PDF.margin, 665, { width: pdf.page.width - 2 * PDF.margin, align: "center" });
     let pageNumber = 1;
     for (const creature of content.creatures) {
       const asset = illustrations.creatures.get(creature.creatureId)!;
       for (const key of ["poem", "funFact", "activity"] as const) {
         pageNumber += 1;
-        const label = sectionTitle(key);
+        const label = pdfText(key, content.language);
         addPage(pageNumber, creature.displayName, label);
         pdf.font("BookBold").fillColor(`#${COLORS.navy}`).fontSize(24).text(creature.displayName, PDF.margin, 64, { width: pdf.page.width - 2 * PDF.margin });
         pdf.moveDown(0.45).fillColor(`#${key === "funFact" ? COLORS.coral : COLORS.teal}`).fontSize(16).text(label);
@@ -453,7 +473,7 @@ export async function exportPdf(content: BookContent, exportDir: string, illustr
     if (content.closingNote) {
       pageNumber += 1;
       addPage(pageNumber);
-      pdf.font("BookBold").fillColor(`#${COLORS.navy}`).fontSize(30).text("Keep Exploring", PDF.margin, 220, { width: pdf.page.width - 2 * PDF.margin, align: "center" });
+      pdf.font("BookBold").fillColor(`#${COLORS.navy}`).fontSize(30).text(pdfText("closing", content.language), PDF.margin, 220, { width: pdf.page.width - 2 * PDF.margin, align: "center" });
       pdf.font("BookRegular").fillColor(`#${COLORS.ink}`).fontSize(18).text(content.closingNote, PDF.margin, 310, { width: pdf.page.width - 2 * PDF.margin, align: "center", lineGap: 8 });
     }
     pdf.end();
