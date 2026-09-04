@@ -6,7 +6,7 @@ import JSZip from "jszip";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { getDocument } from "pdfjs-dist/legacy/build/pdf.mjs";
 import type { BookContent } from "../src/domain.ts";
-import { exportDocx, exportPdf, exportSelectedFormats } from "../src/exporters.ts";
+import { exportDocx, exportPdf, exportSelectedFormats, hasMissingPrintableGlyph } from "../src/exporters.ts";
 import { fixtureIllustrations } from "./fixtures/illustrations.ts";
 
 const { renameMock } = vi.hoisted(() => ({ renameMock: vi.fn() }));
@@ -233,6 +233,36 @@ describe("DOCX exporter", () => {
 });
 
 describe("PDF exporter", () => {
+  it("ignores newline controls during Kannada glyph coverage while rejecting missing printable glyphs", () => {
+    const layout = (value: string) => ({ glyphs: [{ id: value.includes("\uE000") ? 0 : 1 }] });
+    expect(hasMissingPrintableGlyph(layout, "ಕಾಡಿನ ಹಾದಿಯಲಿ\nಆನೆಯ ಪಯಣ")).toBe(false);
+    expect(hasMissingPrintableGlyph(layout, "ಕಾಡಿನ \uE000 ಗೆಳೆಯ")).toBe(true);
+  });
+
+  it.skipIf(!process.env.BOOK_AGENT_KANNADA_FONT_PATH)("exports Kannada poem line breaks with an official static font and still rejects an unsupported printable character", async () => {
+    const directory = await mkdtemp(path.join(os.tmpdir(), "bookagent-kannada-pdf-"));
+    temporaryDirectories.push(directory);
+    const kannada: BookContent = {
+      ...content,
+      title: "ಕಾಡಿನ ಗೆಳೆಯರು",
+      language: "kn",
+      creatures: [{
+        ...content.creatures[0]!,
+        displayName: "ಆನೆ",
+        poem: { ...content.creatures[0]!.poem, title: "ಆನೆಯ ಪಯಣ", text: "ಕಾಡಿನ ಹಾದಿಯಲಿ\nಆನೆಯ ಪಯಣ\nಸಂತಸದ ಕ್ಷಣ\n\nಮರದ ನೆರಳಲಿ\nಹಾಯಾದ ನಿದ್ರೆ\nಮುದ್ದಾದ ಗೆಳೆಯ", language: "kn" },
+        funFact: { ...content.creatures[0]!.funFact, text: "ಆನೆಗಳು ತಮ್ಮ ಸೊಂಡಿಲನ್ನು ನೀರು ಕುಡಿಯಲು ಬಳಸುತ್ತವೆ.", language: "kn" },
+        activity: { ...content.creatures[0]!.activity, text: "ಆನೆಯ ಚಿತ್ರ ಬಿಡಿಸಿ.", language: "kn" }
+      }],
+      closingNote: "ಪ್ರತಿ ಕಾಡುಜೀವಿಗೂ ತನ್ನದೇ ಪಾತ್ರವಿದೆ."
+    };
+    const { set } = await fixtureIllustrations(directory, ["octopus"]);
+    const record = await exportPdf(kannada, directory, set);
+    const document = await getDocument({ data: new Uint8Array(await readFile(path.join(directory, record.relativePath))), useSystemFonts: false }).promise;
+    expect(document.numPages).toBe(5);
+
+    await expect(exportPdf({ ...kannada, title: "ಕಾಡಿನ \uE000 ಗೆಳೆಯರು" }, directory, set)).rejects.toMatchObject({ code: "pdf_glyph_missing" });
+  });
+
   it("creates the canonical cover, three section pages, and optional closing page", async () => {
     const directory = await mkdtemp(path.join(os.tmpdir(), "bookagent-pdf-"));
     temporaryDirectories.push(directory);
